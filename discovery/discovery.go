@@ -60,7 +60,7 @@ type Discovery struct {
 }
 
 // Shutdown memberlist connection. It will drop node from cluster.
-// Its not gracefull exit, members will need to discover that node is no longer part of cluster.
+// Its not gracefull exit, members will need to detect that node is no longer part of cluster.
 func (d *Discovery) Shutdown() error {
 	return d.ml.Shutdown()
 }

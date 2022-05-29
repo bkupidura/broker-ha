@@ -72,6 +72,7 @@ func TestSendReliable(t *testing.T) {
 		inputDataType string
 		inputData     []byte
 		expectedErr   string
+		expectedData  string
 	}{
 		{
 			inputMember:   &memberlist.Node{Addr: net.ParseIP("127.0.0.1"), Port: 7946},
@@ -89,12 +90,15 @@ func TestSendReliable(t *testing.T) {
 			inputMember:   &memberlist.Node{Addr: net.ParseIP("127.0.0.1"), Port: 7946},
 			inputDataType: "MQTTPublish",
 			inputData:     []byte("message"),
+			expectedData:  string(append([]byte{1}, []byte(`message`)...)),
 		},
 	}
+	md := &mockDelegate{}
 	mlConfig := memberlist.DefaultLocalConfig()
 	mlConfig.Name = "node1"
 	mlConfig.BindAddr = "127.0.0.1"
 	mlConfig.LogOutput = ioutil.Discard
+	mlConfig.Delegate = md
 	ml, err := memberlist.Create(mlConfig)
 	if err != nil {
 		t.Fatalf("memberlist.Create error: %s", err)
@@ -116,6 +120,10 @@ func TestSendReliable(t *testing.T) {
 		err = disco.SendReliable(test.inputMember, test.inputDataType, test.inputData)
 		if test.expectedErr != "" {
 			require.Equal(t, test.expectedErr, err.Error())
+		}
+		if test.expectedData != "" {
+			time.Sleep(1 * time.Millisecond)
+			require.Equal(t, test.expectedData, string(md.GetData()))
 		}
 	}
 }
@@ -316,16 +324,12 @@ func TestFormCluster(t *testing.T) {
 		err = disco.FormCluster()
 		ml.Shutdown()
 
-		require.Equal(t, test.expectedLog, logOutput.String())
 		require.Equal(t, test.expectedErr, err)
+		require.Equal(t, test.expectedLog, logOutput.String())
 	}
 }
 
 func TestNew(t *testing.T) {
-	log.SetFlags(0)
-	var logOutput bytes.Buffer
-	log.SetOutput(&logOutput)
-
 	tests := []struct {
 		mockNetInterfaceAddrs func() ([]net.Addr, error)
 		mockMemberlistCreate  func(*memberlist.Config) (*memberlist.Memberlist, error)
@@ -388,6 +392,11 @@ func TestNew(t *testing.T) {
 			expectedLog: "new cluster member 127.0.0.1:1\nsending retained messages to 127.0.0.1:1\nstarting MQTTPublishToCluster queue worker\n",
 		},
 	}
+
+	log.SetFlags(0)
+	var logOutput bytes.Buffer
+	log.SetOutput(&logOutput)
+
 	for _, test := range tests {
 		logOutput.Reset()
 		if test.mockNetInterfaceAddrs != nil {
@@ -461,17 +470,94 @@ func TestPopulatePublishBatch(t *testing.T) {
 }
 
 func TestHandleMQTTPublishToCluster(t *testing.T) {
+	tests := []struct {
+		inputMessage   []*MQTTPublishMessage
+		jsonMarshal    func(any) ([]byte, error)
+		queueDataTypes map[string]byte
+		expectedData   string
+		expectedLog    string
+	}{
+		{
+			inputMessage: []*MQTTPublishMessage{
+				&MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}},
+			},
+			expectedLog: "starting MQTTPublishToCluster queue worker\nunable to marshal to cluster message 127.0.0.1:7947: mockJsonMarshal error\n",
+			jsonMarshal: func(any) ([]byte, error) {
+				return nil, errors.New("mockJsonMarshal error")
+			},
+		},
+		{
+			inputMessage: []*MQTTPublishMessage{
+				&MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}},
+			},
+			expectedLog:    "starting MQTTPublishToCluster queue worker\nunable to publish message to cluster member 127.0.0.1:7947: unknown data type MQTTPublish\n",
+			jsonMarshal:    json.Marshal,
+			queueDataTypes: map[string]byte{},
+		},
+		{
+			inputMessage: []*MQTTPublishMessage{
+				&MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}},
+			},
+			expectedLog:    "starting MQTTPublishToCluster queue worker\n",
+			expectedData:   string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			jsonMarshal:    json.Marshal,
+			queueDataTypes: map[string]byte{"MQTTPublish": 1},
+		},
+		{
+			inputMessage: []*MQTTPublishMessage{
+				&MQTTPublishMessage{Node: []string{}},
+			},
+			expectedLog:    "starting MQTTPublishToCluster queue worker\n",
+			expectedData:   string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			jsonMarshal:    json.Marshal,
+			queueDataTypes: map[string]byte{"MQTTPublish": 1},
+		},
+		{
+			inputMessage: []*MQTTPublishMessage{
+				&MQTTPublishMessage{},
+				&MQTTPublishMessage{Node: []string{}},
+			},
+			expectedLog:    "starting MQTTPublishToCluster queue worker\n",
+			expectedData:   string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			jsonMarshal:    json.Marshal,
+			queueDataTypes: map[string]byte{"MQTTPublish": 1},
+		},
+		{
+			inputMessage: []*MQTTPublishMessage{
+				&MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}},
+				&MQTTPublishMessage{Node: []string{"127.0.0.1:7948"}},
+				&MQTTPublishMessage{},
+			},
+			expectedLog:    "starting MQTTPublishToCluster queue worker\n",
+			expectedData:   string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			jsonMarshal:    json.Marshal,
+			queueDataTypes: map[string]byte{"MQTTPublish": 1},
+		},
+		{
+			inputMessage: []*MQTTPublishMessage{
+				&MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}},
+				&MQTTPublishMessage{},
+				&MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}},
+				&MQTTPublishMessage{},
+			},
+			expectedLog:    "starting MQTTPublishToCluster queue worker\n",
+			expectedData:   string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			jsonMarshal:    json.Marshal,
+			queueDataTypes: map[string]byte{"MQTTPublish": 1},
+		},
+	}
+
 	log.SetFlags(0)
 	var logOutput bytes.Buffer
 	log.SetOutput(&logOutput)
 
-	ctx, ctxCancel := context.WithCancel(context.Background())
-
+	md := &mockDelegate{}
 	c1 := memberlist.DefaultLocalConfig()
 	c1.BindPort = 7947
 	c1.Name = "node1"
 	c1.BindAddr = "127.0.0.1"
 	c1.LogOutput = ioutil.Discard
+	c1.Delegate = md
 	m1, err := memberlist.Create(c1)
 	if err != nil {
 		t.Fatalf("memberlist.Create error: %s", err)
@@ -479,6 +565,7 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 	defer m1.Shutdown()
 
 	c2 := memberlist.DefaultLocalConfig()
+	c2.BindPort = 7948
 	c2.Name = "node2"
 	c2.BindAddr = "127.0.0.1"
 	c2.LogOutput = ioutil.Discard
@@ -499,99 +586,33 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 		t.Fatalf("memberlist.Join error: %s", err)
 	}
 
-	logOutput.Reset()
+	for _, test := range tests {
+		logOutput.Reset()
 
-	go handleMQTTPublishToCluster(ctx, disco)
+		ctx, ctxCancel := context.WithCancel(context.Background())
 
-	time.Sleep(50 * time.Millisecond)
-	require.Equal(t, "starting MQTTPublishToCluster queue worker\n", logOutput.String())
-	logOutput.Reset()
+		jsonMarshal = test.jsonMarshal
+		queueDataTypes = test.queueDataTypes
 
-	jsonMarshal = func(any) ([]byte, error) {
-		return nil, errors.New("mockJsonMarshal error")
-	}
-	MQTTPublishToCluster <- &MQTTPublishMessage{}
+		go handleMQTTPublishToCluster(ctx, disco)
 
-	time.Sleep(50 * time.Millisecond)
-	require.Equal(t, "unable to marshal to cluster message 127.0.0.1:7947: mockJsonMarshal error\n", logOutput.String())
-	logOutput.Reset()
-
-	jsonMarshal = json.Marshal
-
-	delete(queueDataTypes, "MQTTPublish")
-
-	MQTTPublishToCluster <- &MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}}
-
-	time.Sleep(50 * time.Millisecond)
-	require.Equal(t, "unable to publish message to cluster member 127.0.0.1:7947: unknown data type MQTTPublish\n", logOutput.String())
-	logOutput.Reset()
-
-	MQTTPublishToCluster <- &MQTTPublishMessage{}
-
-	time.Sleep(50 * time.Millisecond)
-	require.Equal(t, "unable to publish message to cluster member 127.0.0.1:7947: unknown data type MQTTPublish\n", logOutput.String())
-	logOutput.Reset()
-
-	queueDataTypes["MQTTPublish"] = 1
-
-	jsonMarshal = func(d any) ([]byte, error) {
-		m, err := json.Marshal(d)
-		if string(m) != `[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]` {
-			return nil, errors.New("jsonMarshal wrong marshaled data, expecing single message")
+		for _, m := range test.inputMessage {
+			MQTTPublishToCluster <- m
 		}
-		return m, err
-	}
 
-	MQTTPublishToCluster <- &MQTTPublishMessage{}
+		time.Sleep(10 * time.Millisecond)
+		require.Equal(t, test.expectedLog, logOutput.String())
 
-	time.Sleep(5 * time.Millisecond)
-
-	jsonMarshal = func(d any) ([]byte, error) {
-		m, err := json.Marshal(d)
-		if string(m) != `[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]` {
-			return nil, errors.New("jsonMarshal wrong marshaled data, expecing two messages for all")
+		if test.expectedData != "" {
+			require.Equal(t, test.expectedData, string(md.GetData()))
 		}
-		return m, err
+
+		logOutput.Reset()
+		ctxCancel()
+		time.Sleep(10 * time.Millisecond)
+
+		require.Equal(t, "MQTTPublishToCluster queue worker done\n", logOutput.String())
 	}
-
-	MQTTPublishToCluster <- &MQTTPublishMessage{}
-	MQTTPublishToCluster <- &MQTTPublishMessage{}
-
-	time.Sleep(5 * time.Millisecond)
-
-	jsonMarshal = func(d any) ([]byte, error) {
-		m, err := json.Marshal(d)
-		if string(m) != `[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]` {
-			return nil, errors.New("jsonMarshal wrong marshaled data, expecing three messages for 127.0.0.1:7947")
-		}
-		return m, err
-	}
-
-	MQTTPublishToCluster <- &MQTTPublishMessage{}
-	MQTTPublishToCluster <- &MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}}
-	MQTTPublishToCluster <- &MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}}
-
-	time.Sleep(5 * time.Millisecond)
-
-	jsonMarshal = func(d any) ([]byte, error) {
-		m, err := json.Marshal(d)
-		if string(m) != `[{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]` {
-			return nil, errors.New("jsonMarshal wrong marshaled data, expecing two messages for 127.0.0.1:7947")
-		}
-		return m, err
-	}
-
-	MQTTPublishToCluster <- &MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}}
-	MQTTPublishToCluster <- &MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}}
-	MQTTPublishToCluster <- &MQTTPublishMessage{Node: []string{"missing:7947"}}
-
-	time.Sleep(50 * time.Millisecond)
-	require.Equal(t, "", logOutput.String())
-	logOutput.Reset()
-
-	ctxCancel()
-	time.Sleep(50 * time.Millisecond)
-	require.Equal(t, "MQTTPublishToCluster queue worker done\n", logOutput.String())
 }
 
 func TestGetLocalIPs(t *testing.T) {
@@ -602,9 +623,9 @@ func TestGetLocalIPs(t *testing.T) {
 	}{
 		{
 			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
-				return nil, errors.New("mock error")
+				return nil, errors.New("mockNetInterfaceAddrs error")
 			},
-			expectedErr: errors.New("mock error"),
+			expectedErr: errors.New("mockNetInterfaceAddrs error"),
 		},
 		{
 			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
@@ -783,6 +804,7 @@ func TestGetInitialMemberIPs(t *testing.T) {
 			},
 		},
 	}
+
 	log.SetFlags(0)
 	var logOutput bytes.Buffer
 	log.SetOutput(&logOutput)
@@ -790,16 +812,38 @@ func TestGetInitialMemberIPs(t *testing.T) {
 	for _, test := range tests {
 		logOutput.Reset()
 
-		if test.mockNetLookupSRV != nil {
-			netLookupSRV = test.mockNetLookupSRV
-		}
-		if test.mockNetLookupIP != nil {
-			netLookupIP = test.mockNetLookupIP
-		}
+		netLookupSRV = test.mockNetLookupSRV
+		netLookupIP = test.mockNetLookupIP
 		output, err := getInitialMemberIPs("test")
 		require.Equal(t, test.expectedLog, logOutput.String())
 		require.Equal(t, test.expectedOutput, output)
 		require.Equal(t, test.expectedErr, err)
 
 	}
+}
+
+type mockDelegate struct {
+	data []byte
+}
+
+func (d *mockDelegate) NodeMeta(limit int) []byte {
+	return []byte{}
+}
+
+func (d *mockDelegate) NotifyMsg(b []byte) {
+	d.data = b
+}
+
+func (d *mockDelegate) GetBroadcasts(overhead, limit int) [][]byte {
+	return [][]byte{}
+}
+
+func (d *mockDelegate) LocalState(join bool) []byte {
+	return []byte{}
+}
+
+func (d *mockDelegate) MergeRemoteState(buf []byte, join bool) {}
+
+func (d *mockDelegate) GetData() []byte {
+	return d.data
 }

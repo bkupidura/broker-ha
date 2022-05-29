@@ -40,6 +40,7 @@ func TestAuthenticate(t *testing.T) {
 			},
 		},
 	}
+
 	log.SetFlags(0)
 	var logOutput bytes.Buffer
 	log.SetOutput(&logOutput)
@@ -113,6 +114,7 @@ func TestACL(t *testing.T) {
 			expectedResult: true,
 		},
 	}
+
 	log.SetFlags(0)
 	var logOutput bytes.Buffer
 	log.SetOutput(&logOutput)
@@ -188,6 +190,7 @@ func TestACLCheck(t *testing.T) {
 			expectedResult: true,
 		},
 	}
+
 	log.SetFlags(0)
 	var logOutput bytes.Buffer
 	log.SetOutput(&logOutput)

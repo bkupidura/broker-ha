@@ -48,7 +48,7 @@ func TestNew(t *testing.T) {
 		},
 		{
 			inputListenerErr: false,
-			expectedLog:      "cluster broker started\n",
+			expectedLog:      "cluster broker started\nstarting SendRetained queue worker\nstarting MQTTPublishFromCluster queue worker\n",
 		},
 	}
 	log.SetFlags(0)
@@ -64,6 +64,8 @@ func TestNew(t *testing.T) {
 
 		_, ctxCancel, err := New(listener, auth)
 
+		time.Sleep(1 * time.Millisecond)
+
 		require.Equal(t, test.expectedErr, err)
 		require.Equal(t, test.expectedLog, logOutput.String())
 
@@ -71,7 +73,7 @@ func TestNew(t *testing.T) {
 			ctxCancel()
 
 			// We need to ensure that handlers are closed, otherwise they will break other tests.
-			time.Sleep(5 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 		}
 	}
 }

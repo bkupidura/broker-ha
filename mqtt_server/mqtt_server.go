@@ -75,7 +75,7 @@ func handleMQTTPublishFromCluster(ctx context.Context, mqttServer *mqtt.Server) 
 }
 
 // handleSendRetained will receive cluster member which just joined cluster.
-// We will send all localy retained messages to new node, so sync it with rest of the cluster.
+// We will send all localy retained messages to new node and sync it with rest of the cluster.
 func handleSendRetained(ctx context.Context, mqttServer *mqtt.Server) {
 	log.Printf("starting SendRetained queue worker")
 	for {

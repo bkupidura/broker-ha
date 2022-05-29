@@ -81,7 +81,7 @@ func main() {
 	randomSleepDuration := time.Duration(rand.Intn(maxInitSleep-minInitSleep) + minInitSleep)
 
 	mlConfig := memberlist.DefaultLocalConfig()
-	// Lowering ProbeInterval will allow memberlist to faster find dead nodes but will consume bandwith.
+	// Lowering ProbeInterval will allow memberlist to faster detect dead nodes but will consume bandwidth.
 	mlConfig.ProbeInterval = 500 * time.Millisecond
 	// SecretKey is used encryption of memberlist communication. It should be 16, 24 or 32 bytes long.
 	mlConfig.SecretKey = []byte(config.GetString("cluster.secret_key"))
