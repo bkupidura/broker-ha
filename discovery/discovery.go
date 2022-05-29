@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"sort"
+	"time"
 
 	"encoding/json"
 	"io/ioutil"
@@ -30,6 +31,8 @@ var (
 	// MQTTSendRetained is used when new node join cluster.
 	// It is consumed by mqtt_server.
 	MQTTSendRetained = make(chan *memberlist.Node, 10)
+	// How many times SendReliabe should be retried in case of error.
+	sendRetries = 3
 
 	// Mocks for tests.
 	netLookupSRV      = net.LookupSRV
@@ -234,9 +237,16 @@ func handleMQTTPublishToCluster(ctx context.Context, disco *Discovery) {
 						log.Printf("unable to marshal to cluster message %s: %s", member.Address(), err)
 						continue
 					}
-					if err := disco.SendReliable(member, "MQTTPublish", messageMarshal); err != nil {
-						log.Printf("unable to publish message to cluster member %s: %s", member.Address(), err)
-					}
+					go func() {
+						for retries := 1; retries <= sendRetries; retries++ {
+							if err := disco.SendReliable(member, "MQTTPublish", messageMarshal); err != nil {
+								log.Printf("unable to publish message to cluster member %s (retries %d/%d): %s", member.Address(), retries, sendRetries, err)
+								time.Sleep(time.Duration(retries*10) * time.Millisecond)
+								continue
+							}
+							return
+						}
+					}()
 				}
 			}
 		case <-ctx.Done():

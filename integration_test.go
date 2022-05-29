@@ -134,8 +134,8 @@ func TestBrokerHA(t *testing.T) {
 			require.Equal(t, health.StatusDown, check.Status, fmt.Sprintf("unexpected status for %s", check_name))
 		}
 
-                // wait for LivenessProbe 
-                time.Sleep(1500 * time.Millisecond)
+		// wait for LivenessProbe
+		time.Sleep(1500 * time.Millisecond)
 	}
 }
 

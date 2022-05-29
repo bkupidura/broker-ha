@@ -122,7 +122,7 @@ func TestSendReliable(t *testing.T) {
 			require.Equal(t, test.expectedErr, err.Error())
 		}
 		if test.expectedData != "" {
-			time.Sleep(1 * time.Millisecond)
+			time.Sleep(5 * time.Millisecond)
 			require.Equal(t, test.expectedData, string(md.GetData()))
 		}
 	}
@@ -471,11 +471,11 @@ func TestPopulatePublishBatch(t *testing.T) {
 
 func TestHandleMQTTPublishToCluster(t *testing.T) {
 	tests := []struct {
-		inputMessage   []*MQTTPublishMessage
-		jsonMarshal    func(any) ([]byte, error)
-		queueDataTypes map[string]byte
-		expectedData   string
-		expectedLog    string
+		inputMessage       []*MQTTPublishMessage
+		jsonMarshal        func(any) ([]byte, error)
+		queueDataTypesFunc func()
+		expectedData       string
+		expectedLog        string
 	}{
 		{
 			inputMessage: []*MQTTPublishMessage{
@@ -485,42 +485,66 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 			jsonMarshal: func(any) ([]byte, error) {
 				return nil, errors.New("mockJsonMarshal error")
 			},
+			queueDataTypesFunc: func() {
+				queueDataTypes = map[string]byte{"MQTTPublish": 1}
+			},
 		},
 		{
 			inputMessage: []*MQTTPublishMessage{
 				&MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}},
 			},
-			expectedLog:    "starting MQTTPublishToCluster queue worker\nunable to publish message to cluster member 127.0.0.1:7947: unknown data type MQTTPublish\n",
-			jsonMarshal:    json.Marshal,
-			queueDataTypes: map[string]byte{},
+			expectedLog: "starting MQTTPublishToCluster queue worker\nunable to publish message to cluster member 127.0.0.1:7947 (retries 1/3): unknown data type MQTTPublish\nunable to publish message to cluster member 127.0.0.1:7947 (retries 2/3): unknown data type MQTTPublish\nunable to publish message to cluster member 127.0.0.1:7947 (retries 3/3): unknown data type MQTTPublish\n",
+			jsonMarshal: json.Marshal,
+			queueDataTypesFunc: func() {
+				queueDataTypes = map[string]byte{}
+			},
 		},
 		{
 			inputMessage: []*MQTTPublishMessage{
 				&MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}},
 			},
-			expectedLog:    "starting MQTTPublishToCluster queue worker\n",
-			expectedData:   string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
-			jsonMarshal:    json.Marshal,
-			queueDataTypes: map[string]byte{"MQTTPublish": 1},
+			expectedLog:  "starting MQTTPublishToCluster queue worker\nunable to publish message to cluster member 127.0.0.1:7947 (retries 1/3): unknown data type MQTTPublish\n",
+			expectedData: string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			jsonMarshal:  json.Marshal,
+			queueDataTypesFunc: func() {
+				queueDataTypes = map[string]byte{}
+				time.Sleep(5 * time.Millisecond)
+				queueDataTypes = map[string]byte{"MQTTPublish": 1}
+			},
+		},
+		{
+			inputMessage: []*MQTTPublishMessage{
+				&MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}},
+			},
+			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
+			expectedData: string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			jsonMarshal:  json.Marshal,
+			queueDataTypesFunc: func() {
+				queueDataTypes = map[string]byte{"MQTTPublish": 1}
+			},
 		},
 		{
 			inputMessage: []*MQTTPublishMessage{
 				&MQTTPublishMessage{Node: []string{}},
 			},
-			expectedLog:    "starting MQTTPublishToCluster queue worker\n",
-			expectedData:   string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
-			jsonMarshal:    json.Marshal,
-			queueDataTypes: map[string]byte{"MQTTPublish": 1},
+			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
+			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			jsonMarshal:  json.Marshal,
+			queueDataTypesFunc: func() {
+				queueDataTypes = map[string]byte{"MQTTPublish": 1}
+			},
 		},
 		{
 			inputMessage: []*MQTTPublishMessage{
 				&MQTTPublishMessage{},
 				&MQTTPublishMessage{Node: []string{}},
 			},
-			expectedLog:    "starting MQTTPublishToCluster queue worker\n",
-			expectedData:   string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
-			jsonMarshal:    json.Marshal,
-			queueDataTypes: map[string]byte{"MQTTPublish": 1},
+			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
+			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			jsonMarshal:  json.Marshal,
+			queueDataTypesFunc: func() {
+				queueDataTypes = map[string]byte{"MQTTPublish": 1}
+			},
 		},
 		{
 			inputMessage: []*MQTTPublishMessage{
@@ -528,10 +552,12 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 				&MQTTPublishMessage{Node: []string{"127.0.0.1:7948"}},
 				&MQTTPublishMessage{},
 			},
-			expectedLog:    "starting MQTTPublishToCluster queue worker\n",
-			expectedData:   string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
-			jsonMarshal:    json.Marshal,
-			queueDataTypes: map[string]byte{"MQTTPublish": 1},
+			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
+			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			jsonMarshal:  json.Marshal,
+			queueDataTypesFunc: func() {
+				queueDataTypes = map[string]byte{"MQTTPublish": 1}
+			},
 		},
 		{
 			inputMessage: []*MQTTPublishMessage{
@@ -540,10 +566,12 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 				&MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}},
 				&MQTTPublishMessage{},
 			},
-			expectedLog:    "starting MQTTPublishToCluster queue worker\n",
-			expectedData:   string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
-			jsonMarshal:    json.Marshal,
-			queueDataTypes: map[string]byte{"MQTTPublish": 1},
+			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
+			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			jsonMarshal:  json.Marshal,
+			queueDataTypesFunc: func() {
+				queueDataTypes = map[string]byte{"MQTTPublish": 1}
+			},
 		},
 	}
 
@@ -577,7 +605,7 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 
 	disco := &Discovery{
 		ml:          m2,
-		selfAddress: "127.0.0.1:7946",
+		selfAddress: "127.0.0.1:7948",
 		config:      c2,
 		domain:      "test",
 	}
@@ -592,7 +620,7 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 		ctx, ctxCancel := context.WithCancel(context.Background())
 
 		jsonMarshal = test.jsonMarshal
-		queueDataTypes = test.queueDataTypes
+		go test.queueDataTypesFunc()
 
 		go handleMQTTPublishToCluster(ctx, disco)
 
@@ -600,7 +628,7 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 			MQTTPublishToCluster <- m
 		}
 
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(60 * time.Millisecond)
 		require.Equal(t, test.expectedLog, logOutput.String())
 
 		if test.expectedData != "" {
