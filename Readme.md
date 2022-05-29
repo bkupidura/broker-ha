@@ -38,7 +38,7 @@ Config file should be located in `/config/config.yaml`.
 
 ```
 discovery:
-  domain: broker-headless.namespace.svc.cluster.local
+  domain: broker-headless.broker-ha.svc.cluster.local
 mqtt:
   port: 1883
   user:
@@ -148,7 +148,7 @@ spec:
     spec:
       containers:
       - name: ha-broker
-        image: bkupidura/ha-broker:memberlist-0.0.8
+        image: ghcr.io/bkupidura/broker-ha:latest
         volumeMounts:
           - mountPath: /config
             name: config

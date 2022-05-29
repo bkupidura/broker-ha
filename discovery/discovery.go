@@ -15,11 +15,19 @@ import (
 )
 
 var (
-	queueDataTypes         = map[string]byte{"MQTTPublish": 1}
+	// Defines allowed message types received from cluster.
+	queueDataTypes = map[string]byte{"MQTTPublish": 1}
+	// MQTTPublishFromCluster is used to push data received from memberlist cluster.
+	// It is consumed by mqtt_server.
 	MQTTPublishFromCluster = make(chan *MQTTPublishMessage, 1024)
-	MQTTPublishToCluster   = make(chan *MQTTPublishMessage, 1024)
-	MQTTSendRetained       = make(chan *memberlist.Node, 10)
+	// MQTTPublishToCluster is used to push data received from mqtt_server.
+	// It is consumed by discovery (memberlist).
+	MQTTPublishToCluster = make(chan *MQTTPublishMessage, 1024)
+	// MQTTSendRetained is used when new node join cluster.
+	// It is consumed by mqtt_server.
+	MQTTSendRetained = make(chan *memberlist.Node, 10)
 
+	// Mocks for tests.
 	netLookupSRV      = net.LookupSRV
 	netLookupIP       = net.LookupIP
 	netInterfaceAddrs = net.InterfaceAddrs
@@ -27,6 +35,9 @@ var (
 	memberlistCreate  = memberlist.Create
 )
 
+// MQTTPublishMessage is storing data for MQTTPublishFromCluster and MQTTPublishToCluster.
+// Basicly its MQTT message + list of nodes to which message is addressed.
+// When Node is empty, message will be send to every node in cluster (except self).
 type MQTTPublishMessage struct {
 	Node    []string
 	Payload []byte
@@ -35,6 +46,8 @@ type MQTTPublishMessage struct {
 	Qos     byte
 }
 
+// Discovery is DNS member discovery and abstraction over memberlist.
+// It should be created by New().
 type Discovery struct {
 	domain      string
 	selfAddress string
@@ -42,14 +55,21 @@ type Discovery struct {
 	ml          *memberlist.Memberlist
 }
 
+// Shutdown memberlist connection. It will drop node from cluster.
+// Its not gracefull exit, members will need to discover that node is no longer part of cluster.
 func (d *Discovery) Shutdown() error {
 	return d.ml.Shutdown()
 }
 
+// Returns self health status.
+// 0 is best, anything higher means that there are some issues with cluster.
+// Check memberlist documentation for more details.
 func (d *Discovery) GetHealthScore() int {
 	return d.ml.GetHealthScore()
 }
 
+// Send reliable data to cluster member.
+// It will be formated for `broker-ha`, first byte is used as data type, rest of message is data itself.
 func (d *Discovery) SendReliable(member *memberlist.Node, dataType string, data []byte) error {
 	dataTypeByte, ok := queueDataTypes[dataType]
 	if !ok {
@@ -63,6 +83,7 @@ func (d *Discovery) SendReliable(member *memberlist.Node, dataType string, data 
 	return nil
 }
 
+// Members returns slice of member nodes from cluster.
 func (d *Discovery) Members(withSelf bool) []*memberlist.Node {
 	var members []*memberlist.Node
 	for _, member := range d.ml.Members() {
@@ -74,6 +95,17 @@ func (d *Discovery) Members(withSelf bool) []*memberlist.Node {
 	return members
 }
 
+// FormCluster is responsible for joining existing cluster or forming new cluster.
+// To check if any cluster already exists broker-ha depends on DNS SRV discovery.
+// If we will receive error from DNS SRV or empty response (excluding ourselfs) - new cluster will be created.
+// Otherwise discovery will join existing cluster.
+//
+// There is possibility that more than 1 node will form new cluster and we will endup with 2 not connected clusters.
+// This scenario is possible when all cluster nodes were destroyed/killed.
+// It will by fixed by 3rd cluster member or by k8s.
+//
+// When 3rd node will be spawned, it will connect those "independant" clusters into one synced cluster.
+// If 3rd node will not be able to do that, /healthz endpoint will start reporting POD as unhealthy and POD should be killed by k8s.
 func (d *Discovery) FormCluster() error {
 	var members []string
 
@@ -106,6 +138,9 @@ func (d *Discovery) FormCluster() error {
 	return nil
 }
 
+// New creates new discovery instance.
+// Currently discovery can be started only on nodes with single local IP - no multihoming.
+// But this is default in K8s.
 func New(domain string, mlConfig *memberlist.Config) (*Discovery, context.CancelFunc, error) {
 	d := &Discovery{
 		domain: domain,
@@ -138,12 +173,16 @@ func New(domain string, mlConfig *memberlist.Config) (*Discovery, context.Cancel
 
 	d.ml = ml
 
+	// ctx is used only by tests.
 	ctx, ctxCancel := context.WithCancel(context.Background())
 	go handleMQTTPublishToCluster(ctx, d)
 
 	return d, ctxCancel, nil
 }
 
+// handleMQTTPublishToCluster will get messages from MQTTPublishToCluster and send them with memberlist to other members.
+// When MQTTPublishToCluster.Node is empty, message will be send to all nodes (except self).
+// Otherwise message will be send only to specific members.
 func handleMQTTPublishToCluster(ctx context.Context, disco *Discovery) {
 	log.Printf("starting MQTTPublishToCluster queue worker")
 	for {
@@ -178,6 +217,7 @@ func handleMQTTPublishToCluster(ctx context.Context, disco *Discovery) {
 	}
 }
 
+// Get all IPv4 addresses except loopback.
 func getLocalIPs() (map[string]net.IP, error) {
 	localIPs := make(map[string]net.IP)
 
@@ -195,6 +235,8 @@ func getLocalIPs() (map[string]net.IP, error) {
 	return localIPs, nil
 }
 
+// Get IPv4 addresses for other cluster members.
+// This is only used after start to find if we should join existing cluster or form new one.
 func getInitialMemberIPs(domain string) (map[string]string, error) {
 	initialMemberIPs := make(map[string]string)
 	_, addrs, err := netLookupSRV("", "", domain)

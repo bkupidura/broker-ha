@@ -14,6 +14,8 @@ import (
 	"github.com/alexliesenfeld/health"
 )
 
+// readinessProbe returns health.Checker used by /ready endpoint.
+// It checks discovery (memberlist) healthscore.
 func readinessProbe(disco *discovery.Discovery, initialSleep time.Duration) health.Checker {
 	readinessProbe := health.NewChecker(
 		health.WithCacheDuration(1*time.Second),
@@ -33,6 +35,11 @@ func readinessProbe(disco *discovery.Discovery, initialSleep time.Duration) heal
 	return readinessProbe
 }
 
+// livenessProbe returns health.Checker used by /healthz endpoint.
+// It checks discovery (memberlist) healthscore.
+// It checks discovery (memberlist) members count.
+// This check will be usefull when whole cluster will be restarted and all new ha-broker pods will sleep for same `random` interval.
+// In this case K8s should restart PODs which dosent have any members (except self).
 func livenessProbe(disco *discovery.Discovery, initialSleep time.Duration, expectedMembers int) health.Checker {
 	livenessProbe := health.NewChecker(
 		health.WithCacheDuration(1*time.Second),
@@ -64,6 +71,8 @@ func livenessProbe(disco *discovery.Discovery, initialSleep time.Duration, expec
 	return livenessProbe
 }
 
+// failedCheckLogger is http middleware which will log when any healthcheck (readiness/liveness) is not healthy.
+// It will be executed only on http request.
 func failedCheckLogger() health.Middleware {
 	return func(next health.MiddlewareFunc) health.MiddlewareFunc {
 		return func(r *http.Request) health.CheckerResult {

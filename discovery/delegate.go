@@ -8,12 +8,16 @@ import (
 	"github.com/hashicorp/memberlist"
 )
 
+// delegate implements memberlist.Delegate.
 type delegate struct{}
 
 func (d *delegate) NodeMeta(limit int) []byte {
 	return []byte{}
 }
 
+// NotifyMsg is executed when member receives data from other cluster member.
+// First message byte will be used to decide what kind of data was received.
+// Everything else is treated as data.
 func (d *delegate) NotifyMsg(b []byte) {
 	if len(b) == 0 {
 		return
@@ -45,10 +49,14 @@ func (d *delegate) LocalState(join bool) []byte {
 
 func (d *delegate) MergeRemoteState(buf []byte, join bool) {}
 
+// delegateEvent implements memberlist.EventDelegate.
+// It stores selfAddress which is *memberlist.Node.Address() in format 'ip:port'.
 type delegateEvent struct {
 	selfAddress string
 }
 
+// NotifyJoin is executed when node join cluster.
+// We are skipping NotifyJoin for ourselfs.
 func (d *delegateEvent) NotifyJoin(n *memberlist.Node) {
 	if d.selfAddress == n.Address() {
 		return
@@ -58,6 +66,7 @@ func (d *delegateEvent) NotifyJoin(n *memberlist.Node) {
 	MQTTSendRetained <- n
 }
 
+// Notifyleave is executed when node leave cluster.
 func (d *delegateEvent) NotifyLeave(n *memberlist.Node) {
 	log.Printf("cluster member %s leaved", n.Addr)
 }

@@ -74,6 +74,7 @@ var (
 	})
 )
 
+// Initialize register prometheus collectors.
 func Initialize() {
 	prometheus.MustRegister(clusterMembers)
 	prometheus.MustRegister(clusterMemberHealth)
@@ -92,6 +93,7 @@ func Initialize() {
 	prometheus.MustRegister(inflight)
 }
 
+// Collect should be started as goroutine to refresh prometheus collectors
 func Collect(disco *discovery.Discovery, mqttServer *mqtt.Server) {
 	log.Printf("starting prometheus worker")
 	for {

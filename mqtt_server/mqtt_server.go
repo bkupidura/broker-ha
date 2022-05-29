@@ -11,6 +11,9 @@ import (
 	"github.com/mochi-co/mqtt/server/listeners"
 )
 
+// onMessage handler is executed when mqtt broker receives new message from clients.
+// Its not executed on mqttServer.Publish().
+// When new message is received, it will be send to MQTTPublishToCluster to propagate it across cluster members.
 func onMessage(cl events.Client, pk events.Packet) (pkx events.Packet, err error) {
 	message := &discovery.MQTTPublishMessage{
 		Payload: pk.Payload,
@@ -23,6 +26,7 @@ func onMessage(cl events.Client, pk events.Packet) (pkx events.Packet, err error
 	return pk, nil
 }
 
+// New creates and starts mqtt broker.
 func New(listener listeners.Listener, auth *Auth) (*mqtt.Server, context.CancelFunc, error) {
 	options := &mqtt.Options{
 		BufferSize:      0,
@@ -43,6 +47,7 @@ func New(listener listeners.Listener, auth *Auth) (*mqtt.Server, context.CancelF
 		}
 	}()
 
+	// ctx is used only by tests.
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
 	go handleMQTTPublishFromCluster(ctx, mqttServer)
@@ -53,6 +58,7 @@ func New(listener listeners.Listener, auth *Auth) (*mqtt.Server, context.CancelF
 	return mqttServer, ctxCancel, nil
 }
 
+// handleMQTTPublishFromCluster will receive messages from discovery (memberlist), and publish them to local mqtt server.
 func handleMQTTPublishFromCluster(ctx context.Context, mqttServer *mqtt.Server) {
 	log.Printf("starting MQTTPublishFromCluster queue worker")
 	for {
@@ -68,6 +74,8 @@ func handleMQTTPublishFromCluster(ctx context.Context, mqttServer *mqtt.Server) 
 	}
 }
 
+// handleSendRetained will receive cluster member which just joined cluster.
+// We will send all localy retained messages to new node, so sync it with rest of the cluster.
 func handleSendRetained(ctx context.Context, mqttServer *mqtt.Server) {
 	log.Printf("starting SendRetained queue worker")
 	for {

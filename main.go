@@ -23,10 +23,17 @@ import (
 )
 
 const (
+	// Minimal sleep time after start.
+	// This is used to introduce some random delay, in case all PODs are restarted
+	// and trying to form cluster in exact same moment.
 	minInitSleep = 1
+	// Maximal sleep time after start.
 	maxInitSleep = 60
 )
 
+// getConfig loads config from /config/config.yaml.
+// It will also set config values based on environment variables.
+// BROKER_MQTT_PORT -> mqtt.port
 func getConfig() (*viper.Viper, error) {
 	config := viper.New()
 
@@ -61,6 +68,7 @@ func getConfig() (*viper.Viper, error) {
 	return config, nil
 }
 
+// Main will start discovery instance and mqtt broker instance.
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
@@ -73,7 +81,9 @@ func main() {
 	randomSleepDuration := time.Duration(rand.Intn(maxInitSleep-minInitSleep) + minInitSleep)
 
 	mlConfig := memberlist.DefaultLocalConfig()
+	// Lowering ProbeInterval will allow memberlist to faster find dead nodes but will consume bandwith.
 	mlConfig.ProbeInterval = 500 * time.Millisecond
+	// SecretKey is used encryption of memberlist communication. It should be 16, 24 or 32 bytes long.
 	mlConfig.SecretKey = []byte(config.GetString("cluster.secret_key"))
 
 	disco, _, err := discovery.New(config.GetString("discovery.domain"), mlConfig)
