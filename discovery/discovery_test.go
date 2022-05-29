@@ -412,6 +412,54 @@ func TestNew(t *testing.T) {
 	}
 }
 
+func TestPopulatePublishBatch(t *testing.T) {
+	tests := []struct {
+		inputMessage    *MQTTPublishMessage
+		expectedMessage map[string][]*MQTTPublishMessage
+	}{
+		{
+			inputMessage: &MQTTPublishMessage{},
+			expectedMessage: map[string][]*MQTTPublishMessage{
+				"all": []*MQTTPublishMessage{
+					&MQTTPublishMessage{
+						Node: []string{"all"},
+					},
+				},
+			},
+		},
+		{
+			inputMessage: &MQTTPublishMessage{Node: []string{"127.0.0.1:7946"}},
+			expectedMessage: map[string][]*MQTTPublishMessage{
+				"127.0.0.1:7946": []*MQTTPublishMessage{
+					&MQTTPublishMessage{
+						Node: []string{"127.0.0.1:7946"},
+					},
+				},
+			},
+		},
+		{
+			inputMessage: &MQTTPublishMessage{Node: []string{"127.0.0.1:7946", "2.2.2.2:7946"}},
+			expectedMessage: map[string][]*MQTTPublishMessage{
+				"127.0.0.1:7946": []*MQTTPublishMessage{
+					&MQTTPublishMessage{
+						Node: []string{"127.0.0.1:7946", "2.2.2.2:7946"},
+					},
+				},
+				"2.2.2.2:7946": []*MQTTPublishMessage{
+					&MQTTPublishMessage{
+						Node: []string{"127.0.0.1:7946", "2.2.2.2:7946"},
+					},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		mqttPublishBatch := map[string][]*MQTTPublishMessage{}
+		populatePublishBatch(mqttPublishBatch, test.inputMessage)
+		require.Equal(t, test.expectedMessage, mqttPublishBatch)
+	}
+}
+
 func TestHandleMQTTPublishToCluster(t *testing.T) {
 	log.SetFlags(0)
 	var logOutput bytes.Buffer
@@ -465,7 +513,7 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 	MQTTPublishToCluster <- &MQTTPublishMessage{}
 
 	time.Sleep(50 * time.Millisecond)
-	require.Equal(t, "unable to marshal to cluster message &{[] []  false 0}: mockJsonMarshal error\n", logOutput.String())
+	require.Equal(t, "unable to marshal to cluster message 127.0.0.1:7947: mockJsonMarshal error\n", logOutput.String())
 	logOutput.Reset()
 
 	jsonMarshal = json.Marshal
@@ -475,18 +523,67 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 	MQTTPublishToCluster <- &MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}}
 
 	time.Sleep(50 * time.Millisecond)
-	require.Equal(t, "unable to publish message to cluster member node1: unknown data type MQTTPublish\n", logOutput.String())
+	require.Equal(t, "unable to publish message to cluster member 127.0.0.1:7947: unknown data type MQTTPublish\n", logOutput.String())
 	logOutput.Reset()
 
 	MQTTPublishToCluster <- &MQTTPublishMessage{}
 
 	time.Sleep(50 * time.Millisecond)
-	require.Equal(t, "unable to publish message to cluster member node1: unknown data type MQTTPublish\n", logOutput.String())
+	require.Equal(t, "unable to publish message to cluster member 127.0.0.1:7947: unknown data type MQTTPublish\n", logOutput.String())
 	logOutput.Reset()
 
 	queueDataTypes["MQTTPublish"] = 1
 
+	jsonMarshal = func(d any) ([]byte, error) {
+		m, err := json.Marshal(d)
+		if string(m) != `[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]` {
+			return nil, errors.New("jsonMarshal wrong marshaled data, expecing single message")
+		}
+		return m, err
+	}
+
 	MQTTPublishToCluster <- &MQTTPublishMessage{}
+
+	time.Sleep(5 * time.Millisecond)
+
+	jsonMarshal = func(d any) ([]byte, error) {
+		m, err := json.Marshal(d)
+		if string(m) != `[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]` {
+			return nil, errors.New("jsonMarshal wrong marshaled data, expecing two messages for all")
+		}
+		return m, err
+	}
+
+	MQTTPublishToCluster <- &MQTTPublishMessage{}
+	MQTTPublishToCluster <- &MQTTPublishMessage{}
+
+	time.Sleep(5 * time.Millisecond)
+
+	jsonMarshal = func(d any) ([]byte, error) {
+		m, err := json.Marshal(d)
+		if string(m) != `[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]` {
+			return nil, errors.New("jsonMarshal wrong marshaled data, expecing three messages for 127.0.0.1:7947")
+		}
+		return m, err
+	}
+
+	MQTTPublishToCluster <- &MQTTPublishMessage{}
+	MQTTPublishToCluster <- &MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}}
+	MQTTPublishToCluster <- &MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}}
+
+	time.Sleep(5 * time.Millisecond)
+
+	jsonMarshal = func(d any) ([]byte, error) {
+		m, err := json.Marshal(d)
+		if string(m) != `[{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]` {
+			return nil, errors.New("jsonMarshal wrong marshaled data, expecing two messages for 127.0.0.1:7947")
+		}
+		return m, err
+	}
+
+	MQTTPublishToCluster <- &MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}}
+	MQTTPublishToCluster <- &MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}}
+	MQTTPublishToCluster <- &MQTTPublishMessage{Node: []string{"missing:7947"}}
 
 	time.Sleep(50 * time.Millisecond)
 	require.Equal(t, "", logOutput.String())

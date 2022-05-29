@@ -19,7 +19,7 @@ func TestDelegateNotifyMsg(t *testing.T) {
 	tests := []struct {
 		inputMessage    []byte
 		expectedLog     string
-		expectedMessage *MQTTPublishMessage
+		expectedMessage []*MQTTPublishMessage
 	}{
 		{
 			inputMessage: []byte{},
@@ -35,25 +35,41 @@ func TestDelegateNotifyMsg(t *testing.T) {
 		{
 			inputMessage: append(
 				[]byte{queueDataTypes["MQTTPublish"]},
-				[]byte(`{"Payload": "dGVzdA==", "Topic": "test", "Retain": true, "Qos": 2}`)...,
+				[]byte(`[{"Payload": "dGVzdA==", "Topic": "test", "Retain": true, "Qos": 2}]`)...,
 			),
-			expectedMessage: &MQTTPublishMessage{
-				Payload: []byte("test"),
-				Topic:   "test",
-				Retain:  true,
-				Qos:     2,
+			expectedMessage: []*MQTTPublishMessage{
+				&MQTTPublishMessage{
+					Payload: []byte("test"),
+					Topic:   "test",
+					Retain:  true,
+					Qos:     2,
+				},
 			},
 		},
 		{
 			inputMessage: append(
 				[]byte{queueDataTypes["MQTTPublish"]},
-				[]byte(`{"Payload": "dGVzdA==", "Topic": "test", "Retain": false, "Qos": 0}`)...,
+				[]byte(`[{"Payload": "dGVzdA==", "Topic": "test", "Retain": false, "Qos": 0}, {"Payload": "dGVzdDI=", "Topic": "test2", "Retain": false, "Qos": 1}, {"Payload": "dGVzdDM=", "Topic": "test3", "Retain": true, "Qos": 2}]`)...,
 			),
-			expectedMessage: &MQTTPublishMessage{
-				Payload: []byte("test"),
-				Topic:   "test",
-				Retain:  false,
-				Qos:     0,
+			expectedMessage: []*MQTTPublishMessage{
+				&MQTTPublishMessage{
+					Payload: []byte("test"),
+					Topic:   "test",
+					Retain:  false,
+					Qos:     0,
+				},
+				&MQTTPublishMessage{
+					Payload: []byte("test2"),
+					Topic:   "test2",
+					Retain:  false,
+					Qos:     1,
+				},
+				&MQTTPublishMessage{
+					Payload: []byte("test3"),
+					Topic:   "test3",
+					Retain:  true,
+					Qos:     2,
+				},
 			},
 		},
 	}
@@ -70,8 +86,10 @@ func TestDelegateNotifyMsg(t *testing.T) {
 		require.Equal(t, test.expectedLog, logOutput.String())
 
 		if test.expectedMessage != nil {
-			rm := <-MQTTPublishFromCluster
-			require.Equal(t, test.expectedMessage, rm)
+			for _, expectedMessage := range test.expectedMessage {
+				rm := <-MQTTPublishFromCluster
+				require.Equal(t, expectedMessage, rm)
+			}
 		}
 	}
 }

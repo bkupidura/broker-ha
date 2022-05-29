@@ -23,6 +23,10 @@ var (
 	// MQTTPublishToCluster is used to push data received from mqtt_server.
 	// It is consumed by discovery (memberlist).
 	MQTTPublishToCluster = make(chan *MQTTPublishMessage, 1024)
+	// How many messages we should try to send over single memberlist.SendReliable.
+	// Openning TCP session is expensive, lets try to open single session for multiple messages.
+	// If there is only one message in MQTTPublishToCluster we will not wait for more.
+	mergePublishToCluster = 25
 	// MQTTSendRetained is used when new node join cluster.
 	// It is consumed by mqtt_server.
 	MQTTSendRetained = make(chan *memberlist.Node, 10)
@@ -180,34 +184,59 @@ func New(domain string, mlConfig *memberlist.Config) (*Discovery, context.Cancel
 	return d, ctxCancel, nil
 }
 
+func populatePublishBatch(publishBatch map[string][]*MQTTPublishMessage, message *MQTTPublishMessage) {
+	if len(message.Node) == 0 {
+		message.Node = []string{"all"}
+	}
+	for _, member := range message.Node {
+		publishBatch[member] = append(publishBatch[member], message)
+	}
+}
+
 // handleMQTTPublishToCluster will get messages from MQTTPublishToCluster and send them with memberlist to other members.
 // When MQTTPublishToCluster.Node is empty, message will be send to all nodes (except self).
 // Otherwise message will be send only to specific members.
+//
+// It will try to fetch mergePublishToCluster number of messages from MQTTPublishToCluster.
+// Openning TCP session for every single message is expensive, so lets try to send as much messages as we can.
+// When there is no more messages in MQTTPublishToCluster, we will send what we get and dont wait.
+// []*MQTTPublishMessage is send.
 func handleMQTTPublishToCluster(ctx context.Context, disco *Discovery) {
 	log.Printf("starting MQTTPublishToCluster queue worker")
+
 	for {
+		mqttPublishBatch := map[string][]*MQTTPublishMessage{}
 		select {
 		case message := <-MQTTPublishToCluster:
-			messageMarshal, err := jsonMarshal(message)
-			if err != nil {
-				log.Printf("unable to marshal to cluster message %v: %s", message, err)
-				continue
-			}
-			var members []*memberlist.Node
-			if len(message.Node) == 0 {
-				members = disco.Members(false)
-			} else {
-				for _, memberNode := range disco.Members(false) {
-					for _, messageNode := range message.Node {
-						if memberNode.Address() == messageNode {
-							members = append(members, memberNode)
-						}
-					}
+			populatePublishBatch(mqttPublishBatch, message)
+
+		fetchMultiple:
+			for i := 0; i < mergePublishToCluster; i++ {
+				select {
+				case message := <-MQTTPublishToCluster:
+					populatePublishBatch(mqttPublishBatch, message)
+				default:
+					break fetchMultiple
 				}
 			}
-			for _, member := range members {
-				if err := disco.SendReliable(member, "MQTTPublish", messageMarshal); err != nil {
-					log.Printf("unable to publish message to cluster member %s: %s", member, err)
+
+			for _, member := range disco.Members(false) {
+				var messagesForMember []*MQTTPublishMessage
+				if messagesForAll, ok := mqttPublishBatch["all"]; ok {
+					messagesForMember = messagesForAll
+				}
+				if messages, ok := mqttPublishBatch[member.Address()]; ok {
+					messagesForMember = append(messagesForMember, messages...)
+				}
+				if len(messagesForMember) > 0 {
+					messageMarshal, err := jsonMarshal(messagesForMember)
+					if err != nil {
+						log.Printf("unable to marshal to cluster message %s: %s", member.Address(), err)
+						continue
+					}
+					if err := disco.SendReliable(member, "MQTTPublish", messageMarshal); err != nil {
+						log.Printf("unable to publish message to cluster member %s: %s", member.Address(), err)
+					}
 				}
 			}
 		case <-ctx.Done():
