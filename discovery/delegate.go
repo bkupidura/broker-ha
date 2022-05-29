@@ -70,7 +70,7 @@ func (d *delegateEvent) NotifyJoin(n *memberlist.Node) {
 
 // Notifyleave is executed when node leave cluster.
 func (d *delegateEvent) NotifyLeave(n *memberlist.Node) {
-	log.Printf("cluster member %s leaved", n.Addr)
+	log.Printf("cluster member %s leaved", n.Address())
 }
 
 func (d *delegateEvent) NotifyUpdate(n *memberlist.Node) {}

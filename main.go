@@ -22,7 +22,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
+var (
 	// Minimal sleep time after start.
 	// This is used to introduce some random delay, in case all PODs are restarted
 	// and trying to form cluster in exact same moment.
@@ -55,7 +55,7 @@ func getConfig() (*viper.Viper, error) {
 	config.SetDefault("cluster.secret_key", "DummySecrEtKey1^")
 
 	if err := config.ReadInConfig(); err != nil {
-		return nil, err
+		log.Printf("unable to read config file, starting with defaults: %s", err)
 	}
 
 	requiredArgs := []string{"discovery.domain"}

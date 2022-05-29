@@ -153,7 +153,7 @@ func TestDelegateEventNotifyLeave(t *testing.T) {
 	}{
 		{
 			inputMemberIP: net.ParseIP("1.2.3.4"),
-			expectedLog:   "cluster member 1.2.3.4 leaved\n",
+			expectedLog:   "cluster member 1.2.3.4:0 leaved\n",
 		},
 	}
 	log.SetFlags(0)

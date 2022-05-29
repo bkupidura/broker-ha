@@ -20,7 +20,7 @@ func readinessProbe(disco *discovery.Discovery, initialSleep time.Duration) heal
 	readinessProbe := health.NewChecker(
 		health.WithCacheDuration(1*time.Second),
 		health.WithTimeout(10*time.Second),
-		health.WithPeriodicCheck(1*time.Second, initialSleep*time.Second, health.Check{
+		health.WithCheck(health.Check{
 			Name:    "readiness_cluster_health",
 			Timeout: 1 * time.Second,
 			Check: func(ctx context.Context) error {
@@ -44,7 +44,7 @@ func livenessProbe(disco *discovery.Discovery, initialSleep time.Duration, expec
 	livenessProbe := health.NewChecker(
 		health.WithCacheDuration(1*time.Second),
 		health.WithTimeout(10*time.Second),
-		health.WithPeriodicCheck(3*time.Second, (initialSleep+5)*time.Second, health.Check{
+		health.WithCheck(health.Check{
 			Name:    "liveness_cluster_health",
 			Timeout: 1 * time.Second,
 			Check: func(ctx context.Context) error {
@@ -55,7 +55,7 @@ func livenessProbe(disco *discovery.Discovery, initialSleep time.Duration, expec
 				return nil
 			},
 		}),
-		health.WithPeriodicCheck(3*time.Second, (initialSleep+5)*time.Second, health.Check{
+		health.WithCheck(health.Check{
 			Name:    "liveness_cluster_discovered_members",
 			Timeout: 1 * time.Second,
 			Check: func(ctx context.Context) error {
