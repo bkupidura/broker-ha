@@ -69,18 +69,18 @@ Every config key can be set with environment variable e.g `BROKER_CLUSTER_SECRET
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: ha-broker
+  name: broker-ha
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: broker-headless
-  namespace: ha-broker
+  namespace: broker-ha
 spec:
   clusterIP: None
   selector:
-    app.kubernetes.io/name: ha-broker
+    app.kubernetes.io/name: broker-ha
   ports:
     - protocol: TCP
       port: 7946
@@ -91,7 +91,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: mqtt
-  namespace: ha-broker
+  namespace: broker-ha
   labels:
     app.kubernetes.io/name: mqtt
 spec:
@@ -104,14 +104,14 @@ spec:
       port: 1883
       protocol: TCP
   selector:
-    app.kubernetes.io/name: ha-broker
+    app.kubernetes.io/name: broker-ha
 
 ---
 apiVersion: v1
 data:
   config: |
     discovery:
-      domain: broker-headless.ha-broker.svc.cluster.local
+      domain: broker-headless.broker-ha.svc.cluster.local
     mqtt:
       port: 1883
       user:
@@ -120,34 +120,34 @@ data:
       secret_key: "someSecretKey13$"
 kind: ConfigMap
 metadata:
-  name: ha-broker
-  namespace: ha-broker
+  name: broker-ha
+  namespace: broker-ha
 
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ha-broker
-  namespace: ha-broker
+  name: broker-ha
+  namespace: broker-ha
   labels:
-    app.kubernetes.io/name: ha-broker
+    app.kubernetes.io/name: broker-ha
 spec:
   replicas: 3
   strategy:
     type: RollingUpdate
   selector:
     matchLabels:
-      app.kubernetes.io/name: ha-broker
+      app.kubernetes.io/name: broker-ha
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: ha-broker
+        app.kubernetes.io/name: broker-ha
       annotations:
         prometheus.io/port: "8080"
         prometheus.io/scrape: "true"
     spec:
       containers:
-      - name: ha-broker
+      - name: broker-ha
         image: ghcr.io/bkupidura/broker-ha:latest
         volumeMounts:
           - mountPath: /config
@@ -175,7 +175,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: ha-broker
+            name: broker-ha
             items:
               - key: config
                 path: config.yaml
@@ -189,7 +189,7 @@ spec:
                     - key: app.kubernetes.io/name
                       operator: In
                       values:
-                        - ha-broker
+                        - broker-ha
                 topologyKey: kubernetes.io/hostname
 ```
 

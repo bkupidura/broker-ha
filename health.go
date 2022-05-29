@@ -38,7 +38,7 @@ func readinessProbe(disco *discovery.Discovery, initialSleep time.Duration) heal
 // livenessProbe returns health.Checker used by /healthz endpoint.
 // It checks discovery (memberlist) healthscore.
 // It checks discovery (memberlist) members count.
-// This check will be usefull when whole cluster will be restarted and all new ha-broker pods will sleep for same `random` interval.
+// This check will be usefull when whole cluster will be restarted and all new broker-ha pods will sleep for same `random` interval.
 // In this case K8s should restart PODs which dosent have any members (except self).
 func livenessProbe(disco *discovery.Discovery, initialSleep time.Duration, expectedMembers int) health.Checker {
 	livenessProbe := health.NewChecker(
