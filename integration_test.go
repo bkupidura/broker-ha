@@ -67,12 +67,26 @@ func TestBrokerHA(t *testing.T) {
 	}
 	defer m1.Shutdown()
 
-	_, err = m1.Join([]string{"127.0.0.1:7946"})
+	c2 := memberlist.DefaultLocalConfig()
+	c2.BindAddr = "127.0.0.1"
+	c2.BindPort = 7948
+	c2.AdvertisePort = 7948
+	c2.Name = "node2"
+	c2.LogOutput = ioutil.Discard
+	c2.SecretKey = []byte("DummySecrEtKey1^")
+	m2, err := memberlist.Create(c2)
+	if err != nil {
+		t.Fatalf("memberlist.Create error: %s", err)
+	}
+	defer m2.Shutdown()
+
+	_, err = m2.Join([]string{"127.0.0.1:7946", "127.0.0.1:7947"})
 	if err != nil {
 		t.Fatalf("memberlist.Join error: %s", err)
 	}
 
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(1 * time.Second)
+
 	expectedMessage := string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7947"],"Payload":"dGVzdF9tZXNzYWdlX29uZQ==","Topic":"to_cluster/topic_one","Retain":true,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":"dGVzdF9tZXNzYWdlX3R3bw==","Topic":"to_cluster/topic_two","Retain":true,"Qos":0}]`)...))
 	require.Equal(t, expectedMessage, string(md.GetData()))
 
@@ -80,21 +94,21 @@ func TestBrokerHA(t *testing.T) {
 		t.Fatalf("mqttClient.Publish error: %s", token.Error())
 	}
 
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 	expectedMessage = string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":"dGVzdF9tZXNzYWdlX3RocmVl","Topic":"to_cluster/topic_three","Retain":false,"Qos":1}]`)...))
 	require.Equal(t, expectedMessage, string(md.GetData()))
 
 	var brokerHAMember *memberlist.Node
 
 	for _, member := range m1.Members() {
-		if member != m1.LocalNode() {
+		if member.Address() != m1.LocalNode().Address() && member.Address() != m2.LocalNode().Address() {
 			brokerHAMember = member
 		}
 	}
 
-	err = m1.SendReliable(brokerHAMember, append([]byte{1}, []byte(`[{"Payload": "dGVzdA==", "Topic": "from_cluster/topic_one", "Retain": false, "Qos": 0}]`)...))
+	err = m2.SendReliable(brokerHAMember, append([]byte{1}, []byte(`[{"Payload": "dGVzdA==", "Topic": "from_cluster/topic_one", "Retain": false, "Qos": 0}]`)...))
 	if err != nil {
-		t.Fatalf("m1.SendReliable error: %s", err)
+		t.Fatalf("m2.SendReliable error: %s", err)
 	}
 
 	mqttMessage := <-mqttReceiveQueue
@@ -110,9 +124,11 @@ func TestBrokerHA(t *testing.T) {
 	}
 
 	m1.Shutdown()
+	m2.Shutdown()
 
-	// Delay for memberlist to detect member lost
-	time.Sleep(1 * time.Second)
+	// Delay for memberlist to detect member lost.
+	// Shutdown() will not immediately kill member.
+	time.Sleep(15 * time.Second)
 
 	for _, endpoint := range []string{"ready", "healthz"} {
 		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8080/%s", endpoint))
@@ -133,9 +149,6 @@ func TestBrokerHA(t *testing.T) {
 		for check_name, check := range *healthResult.Details {
 			require.Equal(t, health.StatusDown, check.Status, fmt.Sprintf("unexpected status for %s", check_name))
 		}
-
-		// wait for LivenessProbe
-		time.Sleep(1500 * time.Millisecond)
 	}
 }
 

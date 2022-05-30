@@ -237,16 +237,16 @@ func handleMQTTPublishToCluster(ctx context.Context, disco *Discovery) {
 						log.Printf("unable to marshal to cluster message %s: %s", member.Address(), err)
 						continue
 					}
-					go func() {
+					go func(m *memberlist.Node, data []byte) {
 						for retries := 1; retries <= sendRetries; retries++ {
-							if err := disco.SendReliable(member, "MQTTPublish", messageMarshal); err != nil {
-								log.Printf("unable to publish message to cluster member %s (retries %d/%d): %s", member.Address(), retries, sendRetries, err)
+							if err := disco.SendReliable(m, "MQTTPublish", data); err != nil {
+								log.Printf("unable to publish message to cluster member %s (retries %d/%d): %s", m.Address(), retries, sendRetries, err)
 								time.Sleep(time.Duration(retries*10) * time.Millisecond)
 								continue
 							}
 							return
 						}
-					}()
+					}(member, messageMarshal)
 				}
 			}
 		case <-ctx.Done():
