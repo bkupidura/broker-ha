@@ -113,12 +113,18 @@ func (d *Discovery) Members(withSelf bool) []*memberlist.Node {
 //
 // When 3rd node will be spawned, it will connect those "independant" clusters into one synced cluster.
 // If 3rd node will not be able to do that, /healthz endpoint will start reporting POD as unhealthy and POD should be killed by k8s.
-func (d *Discovery) FormCluster() error {
+func (d *Discovery) FormCluster(initialSleep time.Duration) error {
 	var members []string
 
 	initialMemberIPs, err := getInitialMemberIPs(d.domain)
 	if err != nil {
 		log.Printf("unable to perform discovery: %s", err)
+		log.Printf("sleeping for %ds before forming cluster", initialSleep)
+
+		time.Sleep(initialSleep * time.Second)
+
+		// Lets try again, probably others members are already running.
+		initialMemberIPs, _ = getInitialMemberIPs(d.domain)
 	}
 
 	if initialMemberIPs != nil {

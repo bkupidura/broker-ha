@@ -16,7 +16,7 @@ import (
 
 // readinessProbe returns health.Checker used by /ready endpoint.
 // It checks discovery (memberlist) healthscore.
-func readinessProbe(disco *discovery.Discovery, initialSleep time.Duration) health.Checker {
+func readinessProbe(disco *discovery.Discovery) health.Checker {
 	readinessProbe := health.NewChecker(
 		health.WithCacheDuration(1*time.Second),
 		health.WithTimeout(10*time.Second),
@@ -40,7 +40,7 @@ func readinessProbe(disco *discovery.Discovery, initialSleep time.Duration) heal
 // It checks discovery (memberlist) members count.
 // This check will be usefull when whole cluster will be restarted and all new broker-ha pods will sleep for same `random` interval.
 // In this case K8s should restart PODs which dosent have any members (except self).
-func livenessProbe(disco *discovery.Discovery, initialSleep time.Duration, expectedMembers int) health.Checker {
+func livenessProbe(disco *discovery.Discovery, expectedMembers int) health.Checker {
 	livenessProbe := health.NewChecker(
 		health.WithCacheDuration(1*time.Second),
 		health.WithTimeout(10*time.Second),

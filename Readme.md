@@ -157,7 +157,7 @@ spec:
           httpGet:
             path: /ready
             port: 8080
-          initialDelaySeconds: 5
+          initialDelaySeconds: 10
           periodSeconds: 2
           successThreshold: 1
           timeoutSeconds: 1
@@ -170,7 +170,7 @@ spec:
           periodSeconds: 5
           successThreshold: 1
           timeoutSeconds: 1
-      terminationGracePeriodSeconds: 3
+      terminationGracePeriodSeconds: 60
       dnsPolicy: ClusterFirstWithHostNet
       volumes:
         - name: config

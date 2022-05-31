@@ -108,13 +108,13 @@ func main() {
 	go metric.Collect(disco, mqttServer)
 
 	http.Handle("/ready", health.NewHandler(
-		readinessProbe(disco, randomSleepDuration),
+		readinessProbe(disco),
 		health.WithMiddleware(
 			failedCheckLogger(),
 		),
 	))
 	http.Handle("/healthz", health.NewHandler(
-		livenessProbe(disco, randomSleepDuration, config.GetInt("cluster.expected_members")),
+		livenessProbe(disco, config.GetInt("cluster.expected_members")),
 		health.WithMiddleware(
 			failedCheckLogger(),
 		),
@@ -130,10 +130,7 @@ func main() {
 		log.Fatal(http.ListenAndServe(":8080", nil))
 	}()
 
-	log.Printf("sleeping for %ds before forming cluster", randomSleepDuration)
-	time.Sleep(randomSleepDuration * time.Second)
-
-	if err := disco.FormCluster(); err != nil {
+	if err := disco.FormCluster(randomSleepDuration); err != nil {
 		log.Fatal(err)
 	}
 

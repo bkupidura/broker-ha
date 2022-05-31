@@ -33,7 +33,7 @@ func TestShutdown(t *testing.T) {
 		config:      mlConfig,
 		ml:          ml,
 	}
-	err = disco.FormCluster()
+	err = disco.FormCluster(1)
 	if err != nil {
 		t.Fatalf("disco.FormCluster() error: %s", err)
 	}
@@ -58,7 +58,7 @@ func TestGetHealthScore(t *testing.T) {
 		config:      mlConfig,
 		ml:          ml,
 	}
-	err = disco.FormCluster()
+	err = disco.FormCluster(1)
 	if err != nil {
 		t.Fatalf("disco.FormCluster() error: %s", err)
 	}
@@ -111,7 +111,7 @@ func TestSendReliable(t *testing.T) {
 		config:      mlConfig,
 		ml:          ml,
 	}
-	err = disco.FormCluster()
+	err = disco.FormCluster(1)
 	if err != nil {
 		t.Fatalf("disco.FormCluster() error: %s", err)
 	}
@@ -168,7 +168,7 @@ func TestMembers(t *testing.T) {
 		config:      mlConfig,
 		ml:          ml,
 	}
-	err = disco.FormCluster()
+	err = disco.FormCluster(1)
 	if err != nil {
 		t.Fatalf("disco.FormCluster() error: %s", err)
 	}
@@ -190,7 +190,7 @@ func TestFormCluster(t *testing.T) {
 			mockNetLookupSRV: func(string, string, string) (string, []*net.SRV, error) {
 				return "", nil, errors.New("mockNetLookupSRV error")
 			},
-			expectedLog: "unable to perform discovery: mockNetLookupSRV error\nforming new cluster\n",
+			expectedLog: "unable to perform discovery: mockNetLookupSRV error\nsleeping for 1s before forming cluster\nforming new cluster\n",
 			inputMemberlistConfig: func() *memberlist.Config {
 				mlConfig := memberlist.DefaultLocalConfig()
 				return mlConfig
@@ -321,7 +321,7 @@ func TestFormCluster(t *testing.T) {
 			ml:          ml,
 		}
 
-		err = disco.FormCluster()
+		err = disco.FormCluster(1)
 		ml.Shutdown()
 
 		require.Equal(t, test.expectedErr, err)
