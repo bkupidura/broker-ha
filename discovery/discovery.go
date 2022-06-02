@@ -11,6 +11,7 @@ import (
 
 	"encoding/json"
 	"io/ioutil"
+	"math/rand"
 
 	"github.com/hashicorp/memberlist"
 )
@@ -113,18 +114,27 @@ func (d *Discovery) Members(withSelf bool) []*memberlist.Node {
 //
 // When 3rd node will be spawned, it will connect those "independant" clusters into one synced cluster.
 // If 3rd node will not be able to do that, /healthz endpoint will start reporting POD as unhealthy and POD should be killed by k8s.
-func (d *Discovery) FormCluster(initialSleep time.Duration) error {
+func (d *Discovery) FormCluster(minInitSleep, maxInitSleep int) error {
 	var members []string
 
 	initialMemberIPs, err := getInitialMemberIPs(d.domain)
 	if err != nil {
 		log.Printf("unable to perform discovery: %s", err)
-		log.Printf("sleeping for %ds before forming cluster", initialSleep)
 
-		time.Sleep(initialSleep * time.Second)
+		rand.Seed(time.Now().UnixNano())
+		randomSleepDuration := time.Duration(rand.Intn(maxInitSleep-minInitSleep) + minInitSleep)
+
+		log.Printf("sleeping for %ds before forming cluster", randomSleepDuration)
+		time.Sleep(randomSleepDuration * time.Second)
 
 		// Lets try again, probably others members are already running.
 		initialMemberIPs, _ = getInitialMemberIPs(d.domain)
+	} else {
+		// This sleep is needed in case container is unhealthy and restarted by k8s.
+		// Without it, there is possibility that POD will be restarted faster than memberlist will
+		// be able to detect member down.
+		log.Printf("sleeping for %ds before forming cluster", minInitSleep)
+		time.Sleep(time.Duration(minInitSleep) * time.Second)
 	}
 
 	if initialMemberIPs != nil {

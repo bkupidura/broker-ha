@@ -53,10 +53,33 @@ mqtt:
       prefix: "/restricted"
 cluster:
   expected_members: 3
-  secret_key: "someSecretKey13$"
+  config:
+    secret_key: "someSecretKey13$"
+    tcp_timeout: 1000
+    push_pull_interval: 15000
+    probe_interval: 1000
+    probe_timeout: 200
+    gossip_interval: 100
+    gossip_to_the_dead_time: 15000
+    indirect_checks: 1
+    retransmit_mult: 2
+    suspicion_mult: 3
 ```
 
-Every config key can be set with environment variable e.g `BROKER_CLUSTER_SECRET_KEY`.
+All `cluster.config` options are used to configure `memberlist`. For more details check [hashicorp/memberlist](https://github.com/hashicorp/memberlist/blob/master/config.go).
+
+Every config key can be set with environment variable e.g `BROKER_MQTT_PORT`.
+
+Default config:
+
+```
+mqtt:
+  port: 1883
+cluster:
+  expected_members: 3
+  config:
+    probe_interval: 500
+```
 
 ## K8s Manifest
 
@@ -117,7 +140,9 @@ data:
       user:
         test: test
     cluster:
-      secret_key: "someSecretKey13$"
+      config:
+        probe_interval: 500
+        secret_key: "someSecretKey13$"
 kind: ConfigMap
 metadata:
   name: broker-ha

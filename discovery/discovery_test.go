@@ -33,7 +33,7 @@ func TestShutdown(t *testing.T) {
 		config:      mlConfig,
 		ml:          ml,
 	}
-	err = disco.FormCluster(1)
+	err = disco.FormCluster(1, 2)
 	if err != nil {
 		t.Fatalf("disco.FormCluster() error: %s", err)
 	}
@@ -58,7 +58,7 @@ func TestGetHealthScore(t *testing.T) {
 		config:      mlConfig,
 		ml:          ml,
 	}
-	err = disco.FormCluster(1)
+	err = disco.FormCluster(1, 2)
 	if err != nil {
 		t.Fatalf("disco.FormCluster() error: %s", err)
 	}
@@ -111,7 +111,7 @@ func TestSendReliable(t *testing.T) {
 		config:      mlConfig,
 		ml:          ml,
 	}
-	err = disco.FormCluster(1)
+	err = disco.FormCluster(1, 2)
 	if err != nil {
 		t.Fatalf("disco.FormCluster() error: %s", err)
 	}
@@ -168,7 +168,7 @@ func TestMembers(t *testing.T) {
 		config:      mlConfig,
 		ml:          ml,
 	}
-	err = disco.FormCluster(1)
+	err = disco.FormCluster(1, 2)
 	if err != nil {
 		t.Fatalf("disco.FormCluster() error: %s", err)
 	}
@@ -214,7 +214,7 @@ func TestFormCluster(t *testing.T) {
 				}
 				return a, nil
 			},
-			expectedLog: "joining existing cluster with [2.2.2.2:7947]\n",
+			expectedLog: "sleeping for 1s before forming cluster\njoining existing cluster with [2.2.2.2:7947]\n",
 			expectedErr: multierror.Append(errs, errors.New("Failed to join 2.2.2.2:7947: dial tcp 2.2.2.2:7947: i/o timeout")),
 			inputMemberlistConfig: func() *memberlist.Config {
 				mlConfig := memberlist.DefaultLocalConfig()
@@ -241,7 +241,7 @@ func TestFormCluster(t *testing.T) {
 				}
 				return a, nil
 			},
-			expectedLog: "joining existing cluster with [127.0.0.1:7947]\n",
+			expectedLog: "sleeping for 1s before forming cluster\njoining existing cluster with [127.0.0.1:7947]\n",
 			inputMemberlistConfig: func() *memberlist.Config {
 				mlConfig := memberlist.DefaultLocalConfig()
 				mlConfig.BindAddr = "127.0.0.1"
@@ -270,7 +270,7 @@ func TestFormCluster(t *testing.T) {
 				}
 				return a, nil
 			},
-			expectedLog: "joining existing cluster with [127.0.0.1:7947 2.2.2.2:7946]\n",
+			expectedLog: "sleeping for 1s before forming cluster\njoining existing cluster with [127.0.0.1:7947 2.2.2.2:7946]\n",
 			inputMemberlistConfig: func() *memberlist.Config {
 				mlConfig := memberlist.DefaultLocalConfig()
 				mlConfig.BindAddr = "127.0.0.1"
@@ -321,7 +321,7 @@ func TestFormCluster(t *testing.T) {
 			ml:          ml,
 		}
 
-		err = disco.FormCluster(1)
+		err = disco.FormCluster(1, 2)
 		ml.Shutdown()
 
 		require.Equal(t, test.expectedErr, err)

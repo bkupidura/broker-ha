@@ -20,6 +20,8 @@ func TestBrokerHA(t *testing.T) {
 
 	os.Setenv("BROKER_DISCOVERY_DOMAIN", "test")
 	os.Setenv("BROKER_MQTT_USER", `{"test": "test"}`)
+
+	minInitSleep = 1
 	maxInitSleep = 2
 
 	go main()
@@ -60,7 +62,6 @@ func TestBrokerHA(t *testing.T) {
 	c1.Name = "node1"
 	c1.LogOutput = ioutil.Discard
 	c1.Delegate = md
-	c1.SecretKey = []byte("DummySecrEtKey1^")
 	m1, err := memberlist.Create(c1)
 	if err != nil {
 		t.Fatalf("memberlist.Create error: %s", err)
@@ -73,7 +74,6 @@ func TestBrokerHA(t *testing.T) {
 	c2.AdvertisePort = 7948
 	c2.Name = "node2"
 	c2.LogOutput = ioutil.Discard
-	c2.SecretKey = []byte("DummySecrEtKey1^")
 	m2, err := memberlist.Create(c2)
 	if err != nil {
 		t.Fatalf("memberlist.Create error: %s", err)
