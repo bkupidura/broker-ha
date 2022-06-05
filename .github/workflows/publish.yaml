@@ -5,6 +5,9 @@ on:
     inputs:
       tag:
         required: true
+      latest:
+        required: true
+        default: 'true'
 
 jobs:
   docker:
@@ -25,7 +28,7 @@ jobs:
         uses: docker/metadata-action@v3
         with:
           flavor: |
-            latest=true
+            latest=${{ github.event.inputs.latest }}
           images: |
             ghcr.io/bkupidura/broker-ha
           tags: |
