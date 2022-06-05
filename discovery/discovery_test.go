@@ -143,7 +143,7 @@ func TestMembers(t *testing.T) {
 
 	netLookupSRV = func(string, string, string) (string, []*net.SRV, error) {
 		a := []*net.SRV{
-			&net.SRV{Target: "127-0-0-1.some-service.svc.cluster.local", Port: 7947},
+			{Target: "127-0-0-1.some-service.svc.cluster.local", Port: 7947},
 		}
 		return "", a, nil
 	}
@@ -199,8 +199,8 @@ func TestFormCluster(t *testing.T) {
 		{
 			mockNetLookupSRV: func(string, string, string) (string, []*net.SRV, error) {
 				a := []*net.SRV{
-					&net.SRV{Target: "2-2-2-2.some-service.svc.cluster.local", Port: 7947},
-					&net.SRV{Target: "10-10-10-10.some-service.svc.cluster.local", Port: 7946},
+					{Target: "2-2-2-2.some-service.svc.cluster.local", Port: 7947},
+					{Target: "10-10-10-10.some-service.svc.cluster.local", Port: 7946},
 				}
 				return "", a, nil
 			},
@@ -226,8 +226,8 @@ func TestFormCluster(t *testing.T) {
 		{
 			mockNetLookupSRV: func(string, string, string) (string, []*net.SRV, error) {
 				a := []*net.SRV{
-					&net.SRV{Target: "127-0-0-1.some-service.svc.cluster.local", Port: 7947},
-					&net.SRV{Target: "10-10-10-10.some-service.svc.cluster.local", Port: 7946},
+					{Target: "127-0-0-1.some-service.svc.cluster.local", Port: 7947},
+					{Target: "10-10-10-10.some-service.svc.cluster.local", Port: 7946},
 				}
 				return "", a, nil
 			},
@@ -252,9 +252,9 @@ func TestFormCluster(t *testing.T) {
 		{
 			mockNetLookupSRV: func(string, string, string) (string, []*net.SRV, error) {
 				a := []*net.SRV{
-					&net.SRV{Target: "127-0-0-1.some-service.svc.cluster.local", Port: 7947},
-					&net.SRV{Target: "10-10-10-10.some-service.svc.cluster.local", Port: 7946},
-					&net.SRV{Target: "2-2-2-2.some-service.svc.cluster.local", Port: 7946},
+					{Target: "127-0-0-1.some-service.svc.cluster.local", Port: 7947},
+					{Target: "10-10-10-10.some-service.svc.cluster.local", Port: 7946},
+					{Target: "2-2-2-2.some-service.svc.cluster.local", Port: 7946},
 				}
 				return "", a, nil
 			},
@@ -429,8 +429,8 @@ func TestPopulatePublishBatch(t *testing.T) {
 		{
 			inputMessage: &MQTTPublishMessage{},
 			expectedMessage: map[string][]*MQTTPublishMessage{
-				"all": []*MQTTPublishMessage{
-					&MQTTPublishMessage{
+				"all": {
+					{
 						Node: []string{"all"},
 					},
 				},
@@ -439,8 +439,8 @@ func TestPopulatePublishBatch(t *testing.T) {
 		{
 			inputMessage: &MQTTPublishMessage{Node: []string{"127.0.0.1:7946"}},
 			expectedMessage: map[string][]*MQTTPublishMessage{
-				"127.0.0.1:7946": []*MQTTPublishMessage{
-					&MQTTPublishMessage{
+				"127.0.0.1:7946": {
+					{
 						Node: []string{"127.0.0.1:7946"},
 					},
 				},
@@ -449,13 +449,13 @@ func TestPopulatePublishBatch(t *testing.T) {
 		{
 			inputMessage: &MQTTPublishMessage{Node: []string{"127.0.0.1:7946", "2.2.2.2:7946"}},
 			expectedMessage: map[string][]*MQTTPublishMessage{
-				"127.0.0.1:7946": []*MQTTPublishMessage{
-					&MQTTPublishMessage{
+				"127.0.0.1:7946": {
+					{
 						Node: []string{"127.0.0.1:7946", "2.2.2.2:7946"},
 					},
 				},
-				"2.2.2.2:7946": []*MQTTPublishMessage{
-					&MQTTPublishMessage{
+				"2.2.2.2:7946": {
+					{
 						Node: []string{"127.0.0.1:7946", "2.2.2.2:7946"},
 					},
 				},
@@ -479,7 +479,7 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 	}{
 		{
 			inputMessage: []*MQTTPublishMessage{
-				&MQTTPublishMessage{Node: []string{"127.0.0.1:7946"}},
+				{Node: []string{"127.0.0.1:7946"}},
 			},
 			expectedLog: "starting MQTTPublishToCluster queue worker\nunable to marshal to cluster message 127.0.0.1:7946: mockJsonMarshal error\n",
 			jsonMarshal: func(any) ([]byte, error) {
@@ -491,7 +491,7 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 		},
 		{
 			inputMessage: []*MQTTPublishMessage{
-				&MQTTPublishMessage{Node: []string{"127.0.0.1:7946"}},
+				{Node: []string{"127.0.0.1:7946"}},
 			},
 			expectedLog: "starting MQTTPublishToCluster queue worker\nunable to publish message to cluster member 127.0.0.1:7946 (retries 1/3): unknown data type MQTTPublish\nunable to publish message to cluster member 127.0.0.1:7946 (retries 2/3): unknown data type MQTTPublish\nunable to publish message to cluster member 127.0.0.1:7946 (retries 3/3): unknown data type MQTTPublish\n",
 			jsonMarshal: json.Marshal,
@@ -501,7 +501,7 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 		},
 		{
 			inputMessage: []*MQTTPublishMessage{
-				&MQTTPublishMessage{Node: []string{"127.0.0.1:7946"}},
+				{Node: []string{"127.0.0.1:7946"}},
 			},
 			expectedLog:  "starting MQTTPublishToCluster queue worker\nunable to publish message to cluster member 127.0.0.1:7946 (retries 1/3): unknown data type MQTTPublish\n",
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
@@ -514,7 +514,7 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 		},
 		{
 			inputMessage: []*MQTTPublishMessage{
-				&MQTTPublishMessage{Node: []string{"127.0.0.1:7946"}},
+				{Node: []string{"127.0.0.1:7946"}},
 			},
 			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
@@ -525,7 +525,7 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 		},
 		{
 			inputMessage: []*MQTTPublishMessage{
-				&MQTTPublishMessage{Node: []string{}},
+				{Node: []string{}},
 			},
 			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
@@ -536,8 +536,8 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 		},
 		{
 			inputMessage: []*MQTTPublishMessage{
-				&MQTTPublishMessage{},
-				&MQTTPublishMessage{Node: []string{}},
+				{},
+				{Node: []string{}},
 			},
 			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
@@ -548,9 +548,9 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 		},
 		{
 			inputMessage: []*MQTTPublishMessage{
-				&MQTTPublishMessage{Node: []string{"127.0.0.1:7946"}},
-				&MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}},
-				&MQTTPublishMessage{},
+				{Node: []string{"127.0.0.1:7946"}},
+				{Node: []string{"127.0.0.1:7947"}},
+				{},
 			},
 			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
@@ -561,10 +561,10 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 		},
 		{
 			inputMessage: []*MQTTPublishMessage{
-				&MQTTPublishMessage{Node: []string{"127.0.0.1:7946"}},
-				&MQTTPublishMessage{},
-				&MQTTPublishMessage{Node: []string{"127.0.0.1:7946"}},
-				&MQTTPublishMessage{},
+				{Node: []string{"127.0.0.1:7946"}},
+				{},
+				{Node: []string{"127.0.0.1:7946"}},
+				{},
 			},
 			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
@@ -575,10 +575,10 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 		},
 		{
 			inputMessage: []*MQTTPublishMessage{
-				&MQTTPublishMessage{Node: []string{"127.0.0.1:7946"}},
-				&MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}},
-				&MQTTPublishMessage{Node: []string{"127.0.0.1:7946"}},
-				&MQTTPublishMessage{Node: []string{"127.0.0.1:7947"}},
+				{Node: []string{"127.0.0.1:7946"}},
+				{Node: []string{"127.0.0.1:7947"}},
+				{Node: []string{"127.0.0.1:7946"}},
+				{Node: []string{"127.0.0.1:7947"}},
 			},
 			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
@@ -756,7 +756,7 @@ func TestGetInitialMemberIPs(t *testing.T) {
 		{
 			mockNetLookupSRV: func(string, string, string) (string, []*net.SRV, error) {
 				a := []*net.SRV{
-					&net.SRV{Target: "abc", Port: 7946},
+					{Target: "abc", Port: 7946},
 				}
 				return "", a, nil
 			},
@@ -769,7 +769,7 @@ func TestGetInitialMemberIPs(t *testing.T) {
 		{
 			mockNetLookupSRV: func(string, string, string) (string, []*net.SRV, error) {
 				a := []*net.SRV{
-					&net.SRV{Target: "abc", Port: 7946},
+					{Target: "abc", Port: 7946},
 				}
 				return "", a, nil
 			},
@@ -783,7 +783,7 @@ func TestGetInitialMemberIPs(t *testing.T) {
 		{
 			mockNetLookupSRV: func(string, string, string) (string, []*net.SRV, error) {
 				a := []*net.SRV{
-					&net.SRV{Target: "abc", Port: 7946},
+					{Target: "abc", Port: 7946},
 				}
 				return "", a, nil
 			},
@@ -802,7 +802,7 @@ func TestGetInitialMemberIPs(t *testing.T) {
 		{
 			mockNetLookupSRV: func(string, string, string) (string, []*net.SRV, error) {
 				a := []*net.SRV{
-					&net.SRV{Target: "abc", Port: 7946},
+					{Target: "abc", Port: 7946},
 				}
 				return "", a, nil
 			},
@@ -818,7 +818,7 @@ func TestGetInitialMemberIPs(t *testing.T) {
 		{
 			mockNetLookupSRV: func(string, string, string) (string, []*net.SRV, error) {
 				a := []*net.SRV{
-					&net.SRV{Target: "abc", Port: 7946},
+					{Target: "abc", Port: 7946},
 				}
 				return "", a, nil
 			},
@@ -835,8 +835,8 @@ func TestGetInitialMemberIPs(t *testing.T) {
 		{
 			mockNetLookupSRV: func(string, string, string) (string, []*net.SRV, error) {
 				a := []*net.SRV{
-					&net.SRV{Target: "abc", Port: 7946},
-					&net.SRV{Target: "bsd", Port: 7947},
+					{Target: "abc", Port: 7946},
+					{Target: "bsd", Port: 7947},
 				}
 				return "", a, nil
 			},

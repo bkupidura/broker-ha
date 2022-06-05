@@ -146,8 +146,8 @@ func TestBrokerHA(t *testing.T) {
 		if err != nil {
 			t.Fatalf("json.Unmarshal error: %s", err)
 		}
-		for check_name, check := range *healthResult.Details {
-			require.Equal(t, health.StatusDown, check.Status, fmt.Sprintf("unexpected status for %s", check_name))
+		for checkName, check := range *healthResult.Details {
+			require.Equal(t, health.StatusDown, check.Status, fmt.Sprintf("unexpected status for %s", checkName))
 		}
 	}
 }

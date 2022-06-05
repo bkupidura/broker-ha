@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -26,7 +25,7 @@ func readinessProbe(disco *discovery.Discovery) health.Checker {
 			Check: func(ctx context.Context) error {
 				healthScore := disco.GetHealthScore()
 				if healthScore > 0 {
-					return errors.New(fmt.Sprintf("health score %d", healthScore))
+					return fmt.Errorf("health score %d", healthScore)
 				}
 				return nil
 			},
@@ -50,7 +49,7 @@ func livenessProbe(disco *discovery.Discovery, expectedMembers int) health.Check
 			Check: func(ctx context.Context) error {
 				healthScore := disco.GetHealthScore()
 				if healthScore > 0 {
-					return errors.New(fmt.Sprintf("health score %d", healthScore))
+					return fmt.Errorf("health score %d", healthScore)
 				}
 				return nil
 			},
@@ -62,7 +61,7 @@ func livenessProbe(disco *discovery.Discovery, expectedMembers int) health.Check
 				// Safe guard in case whole cluster shutdown
 				discoveredMembers := len(disco.Members(true))
 				if discoveredMembers == 1 && expectedMembers > 1 {
-					return errors.New(fmt.Sprintf("not enough discovered members %d", discoveredMembers))
+					return fmt.Errorf("not enough discovered members %d", discoveredMembers)
 				}
 				return nil
 			},

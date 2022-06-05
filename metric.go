@@ -1,4 +1,4 @@
-package metric
+package main
 
 import (
 	"log"
@@ -74,8 +74,8 @@ var (
 	})
 )
 
-// Initialize register prometheus collectors.
-func Initialize() {
+// initializeMetrics register prometheus collectors.
+func initializeMetrics() {
 	prometheus.MustRegister(clusterMembers)
 	prometheus.MustRegister(clusterMemberHealth)
 	prometheus.MustRegister(clusterMQTTPublishFromCluster)
@@ -93,8 +93,8 @@ func Initialize() {
 	prometheus.MustRegister(inflight)
 }
 
-// Collect should be started as goroutine to refresh prometheus collectors
-func Collect(disco *discovery.Discovery, mqttServer *mqtt.Server) {
+// metricCollector will refresh Prometheus collectors.
+func metricCollector(disco *discovery.Discovery, mqttServer *mqtt.Server) {
 	log.Printf("starting prometheus worker")
 	for {
 		clusterMembers.Set(float64(len(disco.Members(true))))

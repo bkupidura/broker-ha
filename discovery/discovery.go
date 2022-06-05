@@ -69,19 +69,19 @@ func (d *Discovery) Shutdown() error {
 	return d.ml.Shutdown()
 }
 
-// Returns self health status.
+// GetHealthScore returns self health status.
 // 0 is best, anything higher means that there are some issues with cluster.
 // Check memberlist documentation for more details.
 func (d *Discovery) GetHealthScore() int {
 	return d.ml.GetHealthScore()
 }
 
-// Send reliable data to cluster member.
+// SendReliable sends data to cluster member.
 // It will be formated for `broker-ha`, first byte is used as data type, rest of message is data itself.
 func (d *Discovery) SendReliable(member *memberlist.Node, dataType string, data []byte) error {
 	dataTypeByte, ok := queueDataTypes[dataType]
 	if !ok {
-		return errors.New(fmt.Sprintf("unknown data type %s", dataType))
+		return fmt.Errorf("unknown data type %s", dataType)
 	}
 	message := append([]byte{dataTypeByte}, data...)
 

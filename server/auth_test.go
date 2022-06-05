@@ -1,4 +1,4 @@
-package mqtt_server
+package server
 
 import (
 	"bytes"
@@ -53,7 +53,7 @@ func TestAuthenticate(t *testing.T) {
 
 func TestACL(t *testing.T) {
 	tests := []struct {
-		acl            map[string][]Acl
+		acl            map[string][]ACL
 		user           string
 		topic          string
 		expectedResult bool
@@ -61,22 +61,12 @@ func TestACL(t *testing.T) {
 		{
 			user:  "test",
 			topic: "test",
-			acl: map[string][]Acl{
-				"test": []Acl{
-					Acl{Action: "deny", Prefix: "test"},
+			acl: map[string][]ACL{
+				"test": {
+					{Action: "deny", Prefix: "test"},
 				},
-				"default": []Acl{
-					Acl{Action: "allow", Prefix: "test"},
-				},
-			},
-			expectedResult: false,
-		},
-		{
-			user:  "test",
-			topic: "test",
-			acl: map[string][]Acl{
-				"default": []Acl{
-					Acl{Action: "deny", Prefix: "test"},
+				"default": {
+					{Action: "allow", Prefix: "test"},
 				},
 			},
 			expectedResult: false,
@@ -84,12 +74,22 @@ func TestACL(t *testing.T) {
 		{
 			user:  "test",
 			topic: "test",
-			acl: map[string][]Acl{
-				"test": []Acl{
-					Acl{Action: "allow", Prefix: "test"},
+			acl: map[string][]ACL{
+				"default": {
+					{Action: "deny", Prefix: "test"},
 				},
-				"default": []Acl{
-					Acl{Action: "deny", Prefix: "test"},
+			},
+			expectedResult: false,
+		},
+		{
+			user:  "test",
+			topic: "test",
+			acl: map[string][]ACL{
+				"test": {
+					{Action: "allow", Prefix: "test"},
+				},
+				"default": {
+					{Action: "deny", Prefix: "test"},
 				},
 			},
 			expectedResult: true,
@@ -97,12 +97,12 @@ func TestACL(t *testing.T) {
 		{
 			user:  "test",
 			topic: "test",
-			acl: map[string][]Acl{
-				"test": []Acl{
-					Acl{Action: "allow", Prefix: ""},
+			acl: map[string][]ACL{
+				"test": {
+					{Action: "allow", Prefix: ""},
 				},
-				"default": []Acl{
-					Acl{Action: "deny", Prefix: "test"},
+				"default": {
+					{Action: "deny", Prefix: "test"},
 				},
 			},
 			expectedResult: true,
@@ -110,7 +110,7 @@ func TestACL(t *testing.T) {
 		{
 			user:           "test",
 			topic:          "test",
-			acl:            map[string][]Acl{},
+			acl:            map[string][]ACL{},
 			expectedResult: true,
 		},
 	}
@@ -120,14 +120,14 @@ func TestACL(t *testing.T) {
 	log.SetOutput(&logOutput)
 
 	for _, test := range tests {
-		auth := &Auth{UserAcl: test.acl}
+		auth := &Auth{UserACL: test.acl}
 		require.Equal(t, test.expectedResult, auth.ACL([]byte(test.user), test.topic, true), fmt.Sprintf("failed test for %+v", test.acl))
 	}
 }
 
 func TestACLCheck(t *testing.T) {
 	tests := []struct {
-		acl            []Acl
+		acl            []ACL
 		user           string
 		topic          string
 		expectedResult bool
@@ -135,58 +135,58 @@ func TestACLCheck(t *testing.T) {
 		{
 			user:  "test",
 			topic: "test",
-			acl: []Acl{
-				Acl{Action: "deny", Prefix: "test"},
+			acl: []ACL{
+				{Action: "deny", Prefix: "test"},
 			},
 			expectedResult: false,
 		},
 		{
 			user:  "test",
 			topic: "test/something/something",
-			acl: []Acl{
-				Acl{Action: "deny", Prefix: "test"},
+			acl: []ACL{
+				{Action: "deny", Prefix: "test"},
 			},
 			expectedResult: false,
 		},
 		{
 			user:  "test",
 			topic: "something/",
-			acl: []Acl{
-				Acl{Action: "deny", Prefix: "test"},
-				Acl{Action: "deny", Prefix: "something/"},
+			acl: []ACL{
+				{Action: "deny", Prefix: "test"},
+				{Action: "deny", Prefix: "something/"},
 			},
 			expectedResult: false,
 		},
 		{
 			user:  "test",
 			topic: "something",
-			acl: []Acl{
-				Acl{Action: "deny", Prefix: "test"},
-				Acl{Action: "deny", Prefix: "something/"},
+			acl: []ACL{
+				{Action: "deny", Prefix: "test"},
+				{Action: "deny", Prefix: "something/"},
 			},
 			expectedResult: true,
 		},
 		{
 			user:  "test",
 			topic: "something",
-			acl: []Acl{
-				Acl{Action: "deny", Prefix: "test"},
+			acl: []ACL{
+				{Action: "deny", Prefix: "test"},
 			},
 			expectedResult: true,
 		},
 		{
 			user:  "test",
 			topic: "something",
-			acl: []Acl{
-				Acl{Action: "deny", Prefix: "test"},
-				Acl{Action: "allow", Prefix: "something"},
+			acl: []ACL{
+				{Action: "deny", Prefix: "test"},
+				{Action: "allow", Prefix: "something"},
 			},
 			expectedResult: true,
 		},
 		{
 			user:           "test",
 			topic:          "test",
-			acl:            []Acl{},
+			acl:            []ACL{},
 			expectedResult: true,
 		},
 	}

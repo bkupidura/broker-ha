@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"reflect"
@@ -69,7 +68,7 @@ func getConfig() (*viper.Viper, error) {
 	requiredArgs := []string{"discovery.domain"}
 	for _, argName := range requiredArgs {
 		if config.Get(argName) == nil {
-			return nil, errors.New(fmt.Sprintf("missing required config key: %s", argName))
+			return nil, fmt.Errorf("missing required config key: %s", argName)
 		}
 	}
 

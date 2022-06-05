@@ -1,4 +1,4 @@
-package mqtt_server
+package server
 
 import (
 	"context"

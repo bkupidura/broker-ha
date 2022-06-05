@@ -38,7 +38,7 @@ func TestDelegateNotifyMsg(t *testing.T) {
 				[]byte(`[{"Payload": "dGVzdA==", "Topic": "test", "Retain": true, "Qos": 2}]`)...,
 			),
 			expectedMessage: []*MQTTPublishMessage{
-				&MQTTPublishMessage{
+				{
 					Payload: []byte("test"),
 					Topic:   "test",
 					Retain:  true,
@@ -52,19 +52,19 @@ func TestDelegateNotifyMsg(t *testing.T) {
 				[]byte(`[{"Payload": "dGVzdA==", "Topic": "test", "Retain": false, "Qos": 0}, {"Payload": "dGVzdDI=", "Topic": "test2", "Retain": false, "Qos": 1}, {"Payload": "dGVzdDM=", "Topic": "test3", "Retain": true, "Qos": 2}]`)...,
 			),
 			expectedMessage: []*MQTTPublishMessage{
-				&MQTTPublishMessage{
+				{
 					Payload: []byte("test"),
 					Topic:   "test",
 					Retain:  false,
 					Qos:     0,
 				},
-				&MQTTPublishMessage{
+				{
 					Payload: []byte("test2"),
 					Topic:   "test2",
 					Retain:  false,
 					Qos:     1,
 				},
-				&MQTTPublishMessage{
+				{
 					Payload: []byte("test3"),
 					Topic:   "test3",
 					Retain:  true,

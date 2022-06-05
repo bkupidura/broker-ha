@@ -1,0 +1,45 @@
+#!/bin/sh
+STAGED_GO_FILES=$(git diff --cached --name-only | grep ".go$")
+PASS=true
+
+for FILE in ${STAGED_GO_FILES}
+do
+
+    UNFORMATTED=$(gofmt -l -s ${FILE})
+    if [ ! -z "${UNFORMATTED}" ]; then
+        echo "go files must be formated, run 'gofmt -d -s ${FILE}'"
+        PASS=false
+    fi
+
+    UNFORMATTED=$(goimports -l ${FILE})
+    if [ ! -z "${UNFORMATTED}" ]; then
+        echo "go files must be formated, run 'goimports -d ${FILE}'"
+        PASS=false
+    fi
+done
+
+go vet ./... 2> /dev/null
+RC=$?
+if [ ${RC} -ne 0 ]; then
+    echo "please run, 'go vet ./...'"
+    PASS=false
+fi
+
+TEST_DIRS=$(find . -type d -maxdepth 1 -not -path '*/.*')
+
+for TEST_DIR in ${TEST_DIRS}
+do
+    pushd ${TEST_DIR}
+    go test . 2> /dev/null
+    RC=$?
+    if [ ${RC} -ne 0 ]; then
+        echo "test for ${TEST_DIR} is failing"
+        PASS=false
+    fi
+    popd
+done
+
+if [ "${PASS}" = false ]; then
+    echo "pre-commit hook failed"
+    exit 1
+fi

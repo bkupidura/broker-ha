@@ -8,8 +8,7 @@ import (
 	"net/http"
 
 	"broker/discovery"
-	"broker/metric"
-	"broker/mqtt_server"
+	"broker/server"
 
 	"github.com/alexliesenfeld/health"
 	"github.com/mochi-co/mqtt/server/listeners"
@@ -25,7 +24,7 @@ var (
 	maxInitSleep = 60
 )
 
-// Main will start discovery instance and mqtt broker instance.
+// main will start discovery instance and mqtt broker instance.
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
@@ -45,21 +44,21 @@ func main() {
 		log.Fatal(err)
 	}
 
-	mqttAuth := &mqtt_server.Auth{
+	mqttAuth := &server.Auth{
 		Users:   config.GetStringMapString("mqtt.user"),
-		UserAcl: make(map[string][]mqtt_server.Acl),
+		UserACL: make(map[string][]server.ACL),
 	}
-	config.UnmarshalKey("mqtt.acl", &mqttAuth.UserAcl)
+	config.UnmarshalKey("mqtt.acl", &mqttAuth.UserACL)
 
 	mqttListener := listeners.NewTCP("t1", fmt.Sprintf(":%d", config.GetInt("mqtt.port")))
 
-	mqttServer, _, err := mqtt_server.New(mqttListener, mqttAuth)
+	mqttServer, _, err := server.New(mqttListener, mqttAuth)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	metric.Initialize()
-	go metric.Collect(disco, mqttServer)
+	initializeMetrics()
+	go metricCollector(disco, mqttServer)
 
 	http.Handle("/ready", health.NewHandler(
 		readinessProbe(disco),
