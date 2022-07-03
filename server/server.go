@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 	"log"
-        "time"
+	"time"
 
 	"broker/discovery"
 
@@ -53,7 +53,7 @@ func New(listener listeners.Listener, auth *Auth) (*mqtt.Server, context.CancelF
 
 	go handleMQTTPublishFromCluster(ctx, mqttServer)
 	go handleSendRetained(ctx, mqttServer)
-        go handleInflight(ctx, mqttServer)
+	go handleInflight(ctx, mqttServer)
 
 	log.Printf("cluster broker started")
 
@@ -99,11 +99,14 @@ func handleSendRetained(ctx context.Context, mqttServer *mqtt.Server) {
 }
 
 func handleInflight(ctx context.Context, mqttServer *mqtt.Server) {
-    for {
-        for _, c := range mqttServer.Clients.GetByListener("t1") {
-            log.Printf("inflights messages for %s (%s) %d", c.ID, string(c.Username), c.Inflight.Len())
-            mqttServer.ResendClientInflight(c, false)
-        }
-        time.Sleep(60 * time.Second)
-    }
+	for {
+		for _, cl := range mqttServer.Clients.GetByListener("t1") {
+			log.Printf("inflights messages for %s (%s) %d", cl.ID, string(cl.Username), cl.Inflight.Len())
+			for _, tk := range cl.Inflight.GetAll() {
+				log.Printf("topic %s (%v)", tk.Packet.TopicName, tk.Packet.Topics)
+			}
+			mqttServer.ResendClientInflight(cl, false)
+		}
+		time.Sleep(120 * time.Second)
+	}
 }
