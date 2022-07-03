@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"log"
+        "time"
 
 	"broker/discovery"
 
@@ -52,6 +53,7 @@ func New(listener listeners.Listener, auth *Auth) (*mqtt.Server, context.CancelF
 
 	go handleMQTTPublishFromCluster(ctx, mqttServer)
 	go handleSendRetained(ctx, mqttServer)
+        go handleInflight(ctx, mqttServer)
 
 	log.Printf("cluster broker started")
 
@@ -60,7 +62,6 @@ func New(listener listeners.Listener, auth *Auth) (*mqtt.Server, context.CancelF
 
 // handleMQTTPublishFromCluster will receive messages from discovery (memberlist), and publish them to local mqtt server.
 func handleMQTTPublishFromCluster(ctx context.Context, mqttServer *mqtt.Server) {
-	log.Printf("starting MQTTPublishFromCluster queue worker")
 	for {
 		select {
 		case message := <-discovery.MQTTPublishFromCluster:
@@ -77,7 +78,6 @@ func handleMQTTPublishFromCluster(ctx context.Context, mqttServer *mqtt.Server) 
 // handleSendRetained will receive cluster member which just joined cluster.
 // We will send all localy retained messages to new node and sync it with rest of the cluster.
 func handleSendRetained(ctx context.Context, mqttServer *mqtt.Server) {
-	log.Printf("starting SendRetained queue worker")
 	for {
 		select {
 		case member := <-discovery.MQTTSendRetained:
@@ -96,4 +96,14 @@ func handleSendRetained(ctx context.Context, mqttServer *mqtt.Server) {
 			return
 		}
 	}
+}
+
+func handleInflight(ctx context.Context, mqttServer *mqtt.Server) {
+    for {
+        for _, c := range mqttServer.Clients.GetByListener("t1") {
+            log.Printf("inflights messages for %s (%s) %d", c.ID, string(c.Username), c.Inflight.Len())
+            mqttServer.ResendClientInflight(c, false)
+        }
+        time.Sleep(60 * time.Second)
+    }
 }

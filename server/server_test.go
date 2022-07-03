@@ -48,7 +48,7 @@ func TestNew(t *testing.T) {
 		},
 		{
 			inputListenerErr: false,
-			expectedLog:      "cluster broker started\nstarting SendRetained queue worker\nstarting MQTTPublishFromCluster queue worker\n",
+			expectedLog:      "cluster broker started\n",
 		},
 	}
 	log.SetFlags(0)
@@ -85,11 +85,11 @@ func TestHandleMQTTPublishFromCluster(t *testing.T) {
 	}{
 		{
 			inputMessage: &discovery.MQTTPublishMessage{Topic: "$SYS", Payload: []byte("test")},
-			expectedLog:  "starting MQTTPublishFromCluster queue worker\nunable to publish message from cluster &{[] [116 101 115 116] $SYS false 0}: cannot publish to $ and $SYS topics\n",
+			expectedLog:  "unable to publish message from cluster &{[] [116 101 115 116] $SYS false 0}: cannot publish to $ and $SYS topics\n",
 		},
 		{
 			inputMessage: &discovery.MQTTPublishMessage{Topic: "topic", Payload: []byte("test")},
-			expectedLog:  "starting MQTTPublishFromCluster queue worker\n",
+			expectedLog:  "",
 		},
 	}
 	log.SetFlags(0)
@@ -124,7 +124,7 @@ func TestHandleSendRetained(t *testing.T) {
 	}{
 		{
 			inputNode:    &memberlist.Node{Addr: net.ParseIP("127.0.0.1"), Port: 7946},
-			expectedLog:  "starting SendRetained queue worker\n",
+			expectedLog:  "",
 			expectedNode: []string{"127.0.0.1:7946"},
 		},
 	}
