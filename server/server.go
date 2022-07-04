@@ -107,6 +107,6 @@ func handleInflight(ctx context.Context, mqttServer *mqtt.Server) {
 			}
 			mqttServer.ResendClientInflight(cl, false)
 		}
-		time.Sleep(120 * time.Second)
+		time.Sleep(300 * time.Second)
 	}
 }
