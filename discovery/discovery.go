@@ -129,12 +129,6 @@ func (d *Discovery) FormCluster(minInitSleep, maxInitSleep int) error {
 
 		// Lets try again, probably others members are already running.
 		initialMemberIPs, _ = getInitialMemberIPs(d.domain)
-	} else {
-		// This sleep is needed in case container is unhealthy and restarted by k8s.
-		// Without it, there is possibility that POD will be restarted faster than memberlist will
-		// be able to detect member down.
-		log.Printf("sleeping for %ds before forming cluster", minInitSleep)
-		time.Sleep(time.Duration(minInitSleep) * time.Second)
 	}
 
 	if initialMemberIPs != nil {

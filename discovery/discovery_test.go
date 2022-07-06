@@ -214,7 +214,7 @@ func TestFormCluster(t *testing.T) {
 				}
 				return a, nil
 			},
-			expectedLog: "sleeping for 1s before forming cluster\njoining existing cluster with [2.2.2.2:7947]\n",
+			expectedLog: "joining existing cluster with [2.2.2.2:7947]\n",
 			expectedErr: multierror.Append(errs, errors.New("Failed to join 2.2.2.2:7947: dial tcp 2.2.2.2:7947: i/o timeout")),
 			inputMemberlistConfig: func() *memberlist.Config {
 				mlConfig := memberlist.DefaultLocalConfig()
@@ -241,7 +241,7 @@ func TestFormCluster(t *testing.T) {
 				}
 				return a, nil
 			},
-			expectedLog: "sleeping for 1s before forming cluster\njoining existing cluster with [127.0.0.1:7947]\n",
+			expectedLog: "joining existing cluster with [127.0.0.1:7947]\n",
 			inputMemberlistConfig: func() *memberlist.Config {
 				mlConfig := memberlist.DefaultLocalConfig()
 				mlConfig.BindAddr = "127.0.0.1"
@@ -270,7 +270,7 @@ func TestFormCluster(t *testing.T) {
 				}
 				return a, nil
 			},
-			expectedLog: "sleeping for 1s before forming cluster\njoining existing cluster with [127.0.0.1:7947 2.2.2.2:7946]\n",
+			expectedLog: "joining existing cluster with [127.0.0.1:7947 2.2.2.2:7946]\n",
 			inputMemberlistConfig: func() *memberlist.Config {
 				mlConfig := memberlist.DefaultLocalConfig()
 				mlConfig.BindAddr = "127.0.0.1"

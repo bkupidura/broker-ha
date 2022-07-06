@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"net/http"
 
@@ -27,6 +28,12 @@ var (
 // main will start discovery instance and mqtt broker instance.
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+
+	// This sleep is needed in case container is killed by k8s.
+	// Without it, there is possibility that POD will be restarted faster than memberlist will
+	// be able to detect member down.
+	log.Printf("sleeping for %ds before starting broker", minInitSleep)
+	time.Sleep(time.Duration(minInitSleep) * time.Second)
 
 	config, err := getConfig()
 	if err != nil {
