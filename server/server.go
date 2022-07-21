@@ -41,6 +41,12 @@ func New(listener listeners.Listener, auth *Auth) (*mqtt.Server, context.CancelF
 	}
 
 	mqttServer.Events.OnMessage = onMessage
+	mqttServer.Events.OnConnect = func(cl events.Client, pk events.Packet) {
+		log.Printf("client %s connected", cl.ID)
+	}
+	mqttServer.Events.OnDisconnect = func(cl events.Client, err error) {
+		log.Printf("client %s disconnected: %v", cl.ID, err)
+	}
 
 	go func() {
 		if err := mqttServer.Serve(); err != nil {
