@@ -31,6 +31,7 @@ func New(listener listeners.Listener, auth *Auth) (*mqtt.Server, context.CancelF
 	options := &mqtt.Options{
 		BufferSize:      0,
 		BufferBlockSize: 0,
+		InflightTTL:     60 * 5,
 	}
 
 	mqttServer := mqtt.NewServer(options)
