@@ -41,6 +41,43 @@ func TestShutdown(t *testing.T) {
 	require.Nil(t, disco.Shutdown())
 }
 
+func TestJoin(t *testing.T) {
+	c1 := memberlist.DefaultLocalConfig()
+	c1.BindAddr = "127.0.0.1"
+	c1.BindPort = 7947
+	c1.AdvertisePort = 7947
+	c1.Name = "node1"
+	c1.LogOutput = ioutil.Discard
+	m1, err := memberlist.Create(c1)
+	if err != nil {
+		t.Fatalf("memberlist.Create error: %s", err)
+	}
+	defer m1.Shutdown()
+
+	mlConfig := memberlist.DefaultLocalConfig()
+	mlConfig.Name = "node2"
+	mlConfig.BindAddr = "127.0.0.1"
+	mlConfig.LogOutput = ioutil.Discard
+	ml, err := memberlist.Create(mlConfig)
+	if err != nil {
+		t.Fatalf("memberlist.Create error: %s", err)
+	}
+
+	disco := &Discovery{
+		domain:      "test",
+		selfAddress: "127.0.0.1:7946",
+		config:      mlConfig,
+		ml:          ml,
+	}
+	defer disco.Shutdown()
+
+	_, err = disco.Join([]string{"127.0.0.1:7948"})
+	require.Equal(t, "1 error occurred:\n\t* Failed to join 127.0.0.1:7948: dial tcp 127.0.0.1:7948: connect: connection refused\n\n", err.Error())
+
+	_, err = disco.Join([]string{"127.0.0.1:7947"})
+	require.Nil(t, err)
+}
+
 func TestGetHealthScore(t *testing.T) {
 	mlConfig := memberlist.DefaultLocalConfig()
 	mlConfig.Name = "node1"

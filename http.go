@@ -15,7 +15,7 @@ import (
 	mqtt "github.com/mochi-co/mqtt/server"
 )
 
-// readyHandler returns health.Checker used by /ready endpoint.
+// readyHandler returns handler with health.Checker used by /ready endpoint.
 // It checks discovery (memberlist) healthscore.
 func readyHandler(disco *discovery.Discovery) http.Handler {
 	readinessProbe := health.NewChecker(
@@ -36,11 +36,10 @@ func readyHandler(disco *discovery.Discovery) http.Handler {
 	return health.NewHandler(readinessProbe)
 }
 
-// healthzHandler returns health.Checker used by /healthz endpoint.
+// healthzHandler returns handler with health.Checker used by /healthz endpoint.
 // It checks discovery (memberlist) healthscore.
 // It checks discovery (memberlist) members count.
-// This check will be usefull when whole cluster will be restarted and all new broker-ha pods will sleep for same `random` interval.
-// In this case K8s should restart PODs which dosent have any members (except self).
+// It checks if member is part of the cluster.
 func healthzHandler(disco *discovery.Discovery, expectedMembers int) http.Handler {
 	livenessProbe := health.NewChecker(
 		health.WithCacheDuration(1*time.Second),
@@ -84,6 +83,7 @@ func healthzHandler(disco *discovery.Discovery, expectedMembers int) http.Handle
 	return health.NewHandler(livenessProbe)
 }
 
+// apiErrResponse describes error response for any API call.
 type apiErrResponse struct {
 	Err            error  `json:"-"`               // low-level runtime error
 	HTTPStatusCode int    `json:"-"`               // http response status code
@@ -92,11 +92,14 @@ type apiErrResponse struct {
 	ErrorText      string `json:"error,omitempty"` // application-level error message, for debugging
 }
 
+// Render response.
 func (e *apiErrResponse) Render(w http.ResponseWriter, r *http.Request) error {
 	render.Status(r, e.HTTPStatusCode)
 	return nil
 }
 
+// apiInvalidRequestError returns 400 http error in case wrong requests parameters
+// are sent to API endpoint.
 func apiInvalidRequestError(err error) render.Renderer {
 	return &apiErrResponse{
 		Err:            err,
@@ -106,6 +109,8 @@ func apiInvalidRequestError(err error) render.Renderer {
 	}
 }
 
+// apiApplicationError returns 500 http error in case API is not able to perform
+// requested action.
 func apiApplicationError(err error) render.Renderer {
 	return &apiErrResponse{
 		Err:            err,
@@ -115,6 +120,8 @@ func apiApplicationError(err error) render.Renderer {
 	}
 }
 
+// apiDiscoveryMembersHandler returns all discovery (memberlist) members.
+// wget -O - -S -q http://localhost:8080/api/discovery/members
 func apiDiscoveryMembersHandler(disco *discovery.Discovery) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		render.JSON(w, r, disco.Members(true))
@@ -122,58 +129,8 @@ func apiDiscoveryMembersHandler(disco *discovery.Discovery) func(http.ResponseWr
 	}
 }
 
-type apiDiscoveryLeaveRequest struct {
-	Timeout int64 `json:"timeout"`
-}
-
-func (req *apiDiscoveryLeaveRequest) Bind(r *http.Request) error {
-	if req.Timeout < 100 {
-		return errors.New("timeout should be higher than 100ms")
-	}
-	return nil
-}
-
-func apiDiscoveryLeaveHandler(disco *discovery.Discovery) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		request := &apiDiscoveryLeaveRequest{}
-		if err := render.Bind(r, request); err != nil {
-			render.Render(w, r, apiInvalidRequestError(err))
-			return
-		}
-		if err := disco.Leave(time.Duration(request.Timeout) * time.Millisecond); err != nil {
-			render.Render(w, r, apiApplicationError(err))
-			return
-		}
-		render.Status(r, http.StatusCreated)
-	}
-}
-
-type apiDiscoveryAdvertiseRequest struct {
-	Timeout int64 `json:"timeout"`
-}
-
-func (req *apiDiscoveryAdvertiseRequest) Bind(r *http.Request) error {
-	if req.Timeout < 100 {
-		return errors.New("timeout should be higher than 100ms")
-	}
-	return nil
-}
-
-func apiDiscoveryAdvertiseHandler(disco *discovery.Discovery) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		request := &apiDiscoveryAdvertiseRequest{}
-		if err := render.Bind(r, request); err != nil {
-			render.Render(w, r, apiInvalidRequestError(err))
-			return
-		}
-		if err := disco.UpdateNode(time.Duration(request.Timeout) * time.Millisecond); err != nil {
-			render.Render(w, r, apiApplicationError(err))
-			return
-		}
-		render.Status(r, http.StatusCreated)
-	}
-}
-
+// apiMqttClientsHandler returns all mqtt clients.
+// wget -O - -S -q http://localhost:8080/api/mqtt/clients
 func apiMqttClientsHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		render.JSON(w, r, mqttServer.Clients.GetAll())
@@ -181,17 +138,23 @@ func apiMqttClientsHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *h
 	}
 }
 
+// apiMqttClientIdRequest describe API request when mqtt clientId needs to be provided.
 type apiMqttClientIdRequest struct {
 	ClientId string `json:"client_id"`
 }
 
+// Bind validates request.
 func (req *apiMqttClientIdRequest) Bind(r *http.Request) error {
 	if req.ClientId == "" {
-		return errors.New("client id is required")
+		return errors.New("client_id is required")
 	}
 	return nil
 }
 
+// apiMqttClientStopHandler will stop (disconnect) mqtt client.
+// wget -O - -S -q http://localhost:8080/api/mqtt/client/stop \
+// --post-data '{"client_id": "cc16d0v002aeifmbddo0"}' --header 'Content-Type: application/json'
+// apiMqttClientIdRequest should be passed.
 func apiMqttClientStopHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := &apiMqttClientIdRequest{}
@@ -201,7 +164,7 @@ func apiMqttClientStopHandler(mqttServer *mqtt.Server) func(http.ResponseWriter,
 		}
 		client, ok := mqttServer.Clients.Get(request.ClientId)
 		if !ok {
-			render.Render(w, r, apiApplicationError(errors.New("unknown client")))
+			render.Render(w, r, apiInvalidRequestError(errors.New("unknown client")))
 			return
 		}
 		client.Stop(errors.New("stopped by API"))
@@ -209,6 +172,10 @@ func apiMqttClientStopHandler(mqttServer *mqtt.Server) func(http.ResponseWriter,
 	}
 }
 
+// apiMqttClientInflightHandler will return Inflight messages for client.
+// wget -O - -S -q http://localhost:8080/api/mqtt/client/inflight \
+// --post-data '{"client_id": "cc16d0v002aeifmbddo0"}' --header 'Content-Type: application/json'
+// apiMqttClientIdRequest should be passed.
 func apiMqttClientInflightHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := &apiMqttClientIdRequest{}
@@ -218,7 +185,7 @@ func apiMqttClientInflightHandler(mqttServer *mqtt.Server) func(http.ResponseWri
 		}
 		client, ok := mqttServer.Clients.Get(request.ClientId)
 		if !ok {
-			render.Render(w, r, apiApplicationError(errors.New("unknown client")))
+			render.Render(w, r, apiInvalidRequestError(errors.New("unknown client")))
 			return
 		}
 		render.JSON(w, r, client.Inflight.GetAll())
@@ -226,10 +193,12 @@ func apiMqttClientInflightHandler(mqttServer *mqtt.Server) func(http.ResponseWri
 	}
 }
 
+// apiMqttTopicNameRequest describe API request when mqtt topic needs to be provided.
 type apiMqttTopicNameRequest struct {
 	Topic string `json:"topic"`
 }
 
+// Bind validates request.
 func (req *apiMqttTopicNameRequest) Bind(r *http.Request) error {
 	if req.Topic == "" {
 		return errors.New("topic is required")
@@ -237,6 +206,10 @@ func (req *apiMqttTopicNameRequest) Bind(r *http.Request) error {
 	return nil
 }
 
+// apiMqttTopicMessagesHandler will return messages based on topic.
+// wget -O - -S -q http://localhost:8080/api/mqtt/topic/messages \
+// --post-data '{"topic": "#"}' --header 'Content-Type: application/json'
+// apiMqttTopicNameRequest should be passed.
 func apiMqttTopicMessagesHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := &apiMqttTopicNameRequest{}
@@ -249,6 +222,10 @@ func apiMqttTopicMessagesHandler(mqttServer *mqtt.Server) func(http.ResponseWrit
 	}
 }
 
+// apiMqttTopicSubscribersHandler will return subscribers for topic.
+// wget -O - -S -q http://localhost:8080/api/mqtt/topic/subscribers \
+// --post-data '{"topic": "topic"}' --header 'Content-Type: application/json'
+// apiMqttTopicNameRequest should be passed.
 func apiMqttTopicSubscribersHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := &apiMqttTopicNameRequest{}

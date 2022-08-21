@@ -69,20 +69,9 @@ func (d *Discovery) Shutdown() error {
 	return d.ml.Shutdown()
 }
 
-func (d *Discovery) Leave(timeout time.Duration) error {
-	return d.ml.Leave(timeout)
-}
-
+// Join memberlist cluster.
 func (d *Discovery) Join(members []string) (int, error) {
 	return d.ml.Join(members)
-}
-
-func (d *Discovery) UpdateNode(timeout time.Duration) error {
-	return d.ml.UpdateNode(timeout)
-}
-
-func (d *Discovery) Config() *memberlist.Config {
-	return d.config
 }
 
 // GetHealthScore returns self health status.
