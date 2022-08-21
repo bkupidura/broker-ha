@@ -77,6 +77,10 @@ func (d *Discovery) Join(members []string) (int, error) {
 	return d.ml.Join(members)
 }
 
+func (d *Discovery) UpdateNode(timeout time.Duration) error {
+	return d.ml.UpdateNode(timeout)
+}
+
 func (d *Discovery) Config() *memberlist.Config {
 	return d.config
 }

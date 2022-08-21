@@ -80,7 +80,7 @@ func main() {
 		r.Use(middleware.Recoverer)
 		r.Get("/api/discovery/members", apiDiscoveryMembersHandler(disco))
 		r.Post("/api/discovery/leave", apiDiscoveryLeaveHandler(disco))
-		r.Post("/api/discovery/join", apiDiscoveryJoinHandler(disco))
+		r.Post("/api/discovery/advertise", apiDiscoveryAdvertiseHandler(disco))
 		r.Get("/api/mqtt/clients", apiMqttClientsHandler(mqttServer))
 		r.Post("/api/mqtt/client/stop", apiMqttClientStopHandler(mqttServer))
 		r.Post("/api/mqtt/client/inflight", apiMqttClientInflightHandler(mqttServer))

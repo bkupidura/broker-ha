@@ -68,6 +68,18 @@ func healthzHandler(disco *discovery.Discovery, expectedMembers int) http.Handle
 				return nil
 			},
 		}),
+		health.WithCheck(health.Check{
+			Name:    "liveness_cluster_in_cluster",
+			Timeout: 1 * time.Second,
+			Check: func(ctx context.Context) error {
+				discoveredMembersWithSelf := len(disco.Members(true))
+				discoveredMembersWithoutSelf := len(disco.Members(false))
+				if discoveredMembersWithSelf == discoveredMembersWithoutSelf {
+					return fmt.Errorf("we are not part of the cluster")
+				}
+				return nil
+			},
+		}),
 	)
 	return health.NewHandler(livenessProbe)
 }
@@ -136,25 +148,25 @@ func apiDiscoveryLeaveHandler(disco *discovery.Discovery) func(http.ResponseWrit
 	}
 }
 
-type apiDiscoveryJoinRequest struct {
-	Members []string `json:"members"`
+type apiDiscoveryAdvertiseRequest struct {
+	Timeout int64 `json:"timeout"`
 }
 
-func (req *apiDiscoveryJoinRequest) Bind(r *http.Request) error {
-	if len(req.Members) == 0 {
-		return errors.New("at least one member should be provided")
+func (req *apiDiscoveryAdvertiseRequest) Bind(r *http.Request) error {
+	if req.Timeout < 100 {
+		return errors.New("timeout should be higher than 100ms")
 	}
 	return nil
 }
 
-func apiDiscoveryJoinHandler(disco *discovery.Discovery) func(http.ResponseWriter, *http.Request) {
+func apiDiscoveryAdvertiseHandler(disco *discovery.Discovery) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		request := &apiDiscoveryJoinRequest{}
+		request := &apiDiscoveryAdvertiseRequest{}
 		if err := render.Bind(r, request); err != nil {
 			render.Render(w, r, apiInvalidRequestError(err))
 			return
 		}
-		if _, err := disco.Join(request.Members); err != nil {
+		if err := disco.UpdateNode(time.Duration(request.Timeout) * time.Millisecond); err != nil {
 			render.Render(w, r, apiApplicationError(err))
 			return
 		}
