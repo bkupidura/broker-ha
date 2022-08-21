@@ -146,8 +146,19 @@ func TestBrokerHA(t *testing.T) {
 		if err != nil {
 			t.Fatalf("json.Unmarshal error: %s", err)
 		}
-		for checkName, check := range *healthResult.Details {
-			require.Equal(t, health.StatusDown, check.Status, fmt.Sprintf("unexpected status for %s", checkName))
+
+		if endpoint == "ready" {
+			for checkName, check := range *healthResult.Details {
+				require.Equal(t, health.StatusDown, check.Status, fmt.Sprintf("unexpected status for %s", checkName))
+			}
+		} else {
+			for _, shouldFailCheckName := range []string{"liveness_cluster_health", "liveness_cluster_discovered_members"} {
+				for checkName, check := range *healthResult.Details {
+					if checkName == shouldFailCheckName {
+						require.Equal(t, health.StatusDown, check.Status, fmt.Sprintf("unexpected status for %s", checkName))
+					}
+				}
+			}
 		}
 	}
 }

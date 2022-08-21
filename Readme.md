@@ -220,6 +220,12 @@ spec:
 
 ## HTTP Endpoints
 
-- `:8080/metrics` - Prometheus metrics endpoint
-- `:8080/ready` - Readiness probe endpoint
-- `:8080/healthz` - Liveness probe endpoint
+- GET `:8080/metrics` - Prometheus metrics endpoint
+- GET `:8080/ready` - Readiness probe endpoint
+- GET `:8080/healthz` - Liveness probe endpoint
+- GET `:8080/api/discovery/members` - Get discovery (memberlist) members
+- GET `:8080/api/mqtt/clients` - Get mqtt clients
+- POST `:8080/api/mqtt/client/stop` - Stop (disconnect) mqtt client
+- POST `:8080/api/mqtt/client/inflight` - Get inflight messages for mqtt client
+- POST `:8080/api/mqtt/topic/messages` - Get mqtt messages for topic
+- POST `:8080/api/mqtt/topic/subscribers` - Get mqtt subscribers for topic

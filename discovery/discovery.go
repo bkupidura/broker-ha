@@ -69,6 +69,11 @@ func (d *Discovery) Shutdown() error {
 	return d.ml.Shutdown()
 }
 
+// Join memberlist cluster.
+func (d *Discovery) Join(members []string) (int, error) {
+	return d.ml.Join(members)
+}
+
 // GetHealthScore returns self health status.
 // 0 is best, anything higher means that there are some issues with cluster.
 // Check memberlist documentation for more details.
@@ -144,7 +149,7 @@ func (d *Discovery) FormCluster(minInitSleep, maxInitSleep int) error {
 
 	if len(members) > 0 {
 		log.Printf("joining existing cluster with %s", members)
-		_, err := d.ml.Join(members)
+		_, err := d.Join(members)
 		if err != nil {
 			return err
 		}

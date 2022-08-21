@@ -11,7 +11,8 @@ import (
 	"broker/discovery"
 	"broker/server"
 
-	"github.com/alexliesenfeld/health"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/mochi-co/mqtt/server/listeners"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -57,7 +58,7 @@ func main() {
 	}
 	config.UnmarshalKey("mqtt.acl", &mqttAuth.UserACL)
 
-	mqttListener := listeners.NewTCP("t1", fmt.Sprintf(":%d", config.GetInt("mqtt.port")))
+	mqttListener := listeners.NewTCP("tcp", fmt.Sprintf(":%d", config.GetInt("mqtt.port")))
 
 	mqttServer, _, err := server.New(mqttListener, mqttAuth)
 	if err != nil {
@@ -67,19 +68,23 @@ func main() {
 	initializeMetrics()
 	go metricCollector(disco, mqttServer)
 
-	http.Handle("/ready", health.NewHandler(
-		readinessProbe(disco),
-		health.WithMiddleware(
-			failedCheckLogger(),
-		),
-	))
-	http.Handle("/healthz", health.NewHandler(
-		livenessProbe(disco, config.GetInt("cluster.expected_members")),
-		health.WithMiddleware(
-			failedCheckLogger(),
-		),
-	))
-	http.Handle("/metrics", promhttp.Handler())
+	httpRouter := chi.NewRouter()
+
+	httpRouter.Group(func(r chi.Router) {
+		r.Use(middleware.Recoverer)
+		r.Method("GET", "/ready", readyHandler(disco))
+		r.Method("GET", "/healthz", healthzHandler(disco, config.GetInt("cluster.expected_members")))
+		r.Method("GET", "/metrics", promhttp.Handler())
+	})
+	httpRouter.Group(func(r chi.Router) {
+		r.Use(middleware.Recoverer)
+		r.Get("/api/discovery/members", apiDiscoveryMembersHandler(disco))
+		r.Get("/api/mqtt/clients", apiMqttClientsHandler(mqttServer))
+		r.Post("/api/mqtt/client/stop", apiMqttClientStopHandler(mqttServer))
+		r.Post("/api/mqtt/client/inflight", apiMqttClientInflightHandler(mqttServer))
+		r.Post("/api/mqtt/topic/messages", apiMqttTopicMessagesHandler(mqttServer))
+		r.Post("/api/mqtt/topic/subscribers", apiMqttTopicSubscribersHandler(mqttServer))
+	})
 
 	var wg sync.WaitGroup
 
@@ -87,7 +92,7 @@ func main() {
 
 	go func() {
 		defer wg.Done()
-		log.Fatal(http.ListenAndServe(":8080", nil))
+		log.Fatal(http.ListenAndServe(":8080", httpRouter))
 	}()
 
 	if err := disco.FormCluster(minInitSleep, maxInitSleep); err != nil {
