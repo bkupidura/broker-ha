@@ -77,7 +77,15 @@ func main() {
 		r.Method("GET", "/metrics", promhttp.Handler())
 	})
 	httpRouter.Group(func(r chi.Router) {
+		r.Use(middleware.CleanPath)
+		if apiAuth := config.GetStringMapString("api.user"); len(apiAuth) > 0 {
+			log.Printf("basic auth for API HTTP endpoint enabled")
+			r.Use(middleware.BasicAuth("api", apiAuth))
+		} else {
+			log.Printf("basic auth for API HTTP endpoint disabled")
+		}
 		r.Use(middleware.Recoverer)
+
 		r.Get("/api/discovery/members", apiDiscoveryMembersHandler(disco))
 		r.Get("/api/mqtt/clients", apiMqttClientsHandler(mqttServer))
 		r.Post("/api/mqtt/client/stop", apiMqttClientStopHandler(mqttServer))

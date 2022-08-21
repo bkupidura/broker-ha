@@ -50,6 +50,7 @@ func getConfig() (*viper.Viper, error) {
 	config.SetConfigType("yaml")
 
 	config.AddConfigPath("/config")
+	config.AddConfigPath(".")
 
 	replacer := strings.NewReplacer(".", "_")
 	config.SetEnvKeyReplacer(replacer)

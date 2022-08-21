@@ -37,6 +37,9 @@ DNS SRV discovery is only used to discover initial (after startup) cluster membe
 Config file should be located in `/config/config.yaml`.
 
 ```
+api:
+  user:
+    admin: admin
 discovery:
   domain: broker-headless.broker-ha.svc.cluster.local
 mqtt:
