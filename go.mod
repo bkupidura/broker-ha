@@ -5,6 +5,8 @@ go 1.18
 require (
 	github.com/alexliesenfeld/health v0.6.0
 	github.com/eclipse/paho.mqtt.golang v1.4.1
+	github.com/go-chi/chi/v5 v5.0.7
+	github.com/go-chi/render v1.0.2
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/memberlist v0.4.0
 	github.com/mochi-co/mqtt v1.3.1
@@ -14,6 +16,7 @@ require (
 )
 
 require (
+	github.com/ajg/form v1.5.1 // indirect
 	github.com/armon/go-metrics v0.4.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
