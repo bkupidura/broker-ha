@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/alexliesenfeld/health"
-	MQTT "github.com/eclipse/paho.mqtt.golang"
+	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/hashicorp/memberlist"
 	"github.com/stretchr/testify/require"
 )
@@ -28,19 +28,19 @@ func TestBrokerHA(t *testing.T) {
 
 	time.Sleep(time.Duration(maxInitSleep) * time.Second)
 
-	mqttReceiveQueue := make(chan MQTT.Message, 5)
-	mqttOnMessage := func(client MQTT.Client, message MQTT.Message) {
+	mqttReceiveQueue := make(chan paho.Message, 5)
+	mqttOnMessage := func(client paho.Client, message paho.Message) {
 		mqttReceiveQueue <- message
 	}
 
-	mqttConnOpts := MQTT.NewClientOptions().
+	mqttConnOpts := paho.NewClientOptions().
 		AddBroker("127.0.0.1:1883").
 		SetUsername("test").
 		SetPassword("test")
 
-	mqttClient := MQTT.NewClient(mqttConnOpts)
+	mqttClient := paho.NewClient(mqttConnOpts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
-		t.Fatalf("MQTT.NewClient error: %s", token.Error())
+		t.Fatalf("paho.NewClient error: %s", token.Error())
 	}
 
 	if token := mqttClient.Subscribe("from_cluster/#", byte(2), mqttOnMessage); token.Wait() && token.Error() != nil {
@@ -153,11 +153,7 @@ func TestBrokerHA(t *testing.T) {
 			}
 		} else {
 			for _, shouldFailCheckName := range []string{"liveness_cluster_health", "liveness_cluster_discovered_members"} {
-				for checkName, check := range *healthResult.Details {
-					if checkName == shouldFailCheckName {
-						require.Equal(t, health.StatusDown, check.Status, fmt.Sprintf("unexpected status for %s", checkName))
-					}
-				}
+				require.Equal(t, health.StatusDown, (*healthResult.Details)[shouldFailCheckName].Status)
 			}
 		}
 	}

@@ -1,14 +1,14 @@
-package server
+package broker
 
 import (
 	"context"
 	"log"
 
-	"broker/discovery"
-
 	mqtt "github.com/mochi-co/mqtt/server"
 	"github.com/mochi-co/mqtt/server/events"
 	"github.com/mochi-co/mqtt/server/listeners"
+
+	"brokerha/internal/discovery"
 )
 
 // onMessage handler is executed when mqtt broker receives new message from clients.

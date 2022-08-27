@@ -1,14 +1,13 @@
-package main
+package metric
 
 import (
 	"log"
 	"time"
 
-	"broker/discovery"
-
 	mqtt "github.com/mochi-co/mqtt/server"
-
 	"github.com/prometheus/client_golang/prometheus"
+
+	"brokerha/internal/discovery"
 )
 
 var (
@@ -74,8 +73,8 @@ var (
 	})
 )
 
-// initializeMetrics register prometheus collectors.
-func initializeMetrics() {
+// Initialize register prometheus collectors and start collector.
+func Initialize(disco *discovery.Discovery, mqttServer *mqtt.Server) {
 	prometheus.MustRegister(clusterMembers)
 	prometheus.MustRegister(clusterMemberHealth)
 	prometheus.MustRegister(clusterMQTTPublishFromCluster)
@@ -91,10 +90,12 @@ func initializeMetrics() {
 	prometheus.MustRegister(publishRecv)
 	prometheus.MustRegister(publishSent)
 	prometheus.MustRegister(inflight)
+
+	go collect(disco, mqttServer)
 }
 
-// metricCollector will refresh Prometheus collectors.
-func metricCollector(disco *discovery.Discovery, mqttServer *mqtt.Server) {
+// collect will refresh Prometheus collectors.
+func collect(disco *discovery.Discovery, mqttServer *mqtt.Server) {
 	log.Printf("starting prometheus worker")
 	for {
 		clusterMembers.Set(float64(len(disco.Members(true))))

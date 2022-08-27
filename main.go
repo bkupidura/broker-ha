@@ -3,18 +3,16 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
-	"net/http"
-
-	"broker/discovery"
-	"broker/server"
-
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/mochi-co/mqtt/server/listeners"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"brokerha/internal/api"
+	"brokerha/internal/broker"
+	"brokerha/internal/discovery"
+	"brokerha/internal/metric"
 )
 
 var (
@@ -52,47 +50,22 @@ func main() {
 		log.Fatal(err)
 	}
 
-	mqttAuth := &server.Auth{
+	mqttAuth := &broker.Auth{
 		Users:   config.GetStringMapString("mqtt.user"),
-		UserACL: make(map[string][]server.ACL),
+		UserACL: make(map[string][]broker.ACL),
 	}
 	config.UnmarshalKey("mqtt.acl", &mqttAuth.UserACL)
 
 	mqttListener := listeners.NewTCP("tcp", fmt.Sprintf(":%d", config.GetInt("mqtt.port")))
 
-	mqttServer, _, err := server.New(mqttListener, mqttAuth)
+	mqttServer, _, err := broker.New(mqttListener, mqttAuth)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	initializeMetrics()
-	go metricCollector(disco, mqttServer)
+	metric.Initialize(disco, mqttServer)
 
-	httpRouter := chi.NewRouter()
-
-	httpRouter.Group(func(r chi.Router) {
-		r.Use(middleware.Recoverer)
-		r.Method("GET", "/ready", readyHandler(disco))
-		r.Method("GET", "/healthz", healthzHandler(disco, config.GetInt("cluster.expected_members")))
-		r.Method("GET", "/metrics", promhttp.Handler())
-	})
-	httpRouter.Group(func(r chi.Router) {
-		r.Use(middleware.CleanPath)
-		if apiAuth := config.GetStringMapString("api.user"); len(apiAuth) > 0 {
-			log.Printf("basic auth for API HTTP endpoint enabled")
-			r.Use(middleware.BasicAuth("api", apiAuth))
-		} else {
-			log.Printf("basic auth for API HTTP endpoint disabled")
-		}
-		r.Use(middleware.Recoverer)
-
-		r.Get("/api/discovery/members", apiDiscoveryMembersHandler(disco))
-		r.Get("/api/mqtt/clients", apiMqttClientsHandler(mqttServer))
-		r.Post("/api/mqtt/client/stop", apiMqttClientStopHandler(mqttServer))
-		r.Post("/api/mqtt/client/inflight", apiMqttClientInflightHandler(mqttServer))
-		r.Post("/api/mqtt/topic/messages", apiMqttTopicMessagesHandler(mqttServer))
-		r.Post("/api/mqtt/topic/subscribers", apiMqttTopicSubscribersHandler(mqttServer))
-	})
+	httpRouter := api.NewRouter(disco, mqttServer, config.GetInt("cluster.expected_members"), config.GetStringMapString("api.user"))
 
 	var wg sync.WaitGroup
 

@@ -1,4 +1,4 @@
-package server
+package broker
 
 import (
 	"bytes"
@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"broker/discovery"
-
 	"github.com/hashicorp/memberlist"
 	mqtt "github.com/mochi-co/mqtt/server"
 	"github.com/mochi-co/mqtt/server/events"
 	"github.com/mochi-co/mqtt/server/listeners"
 	"github.com/stretchr/testify/require"
+
+	"brokerha/internal/discovery"
 )
 
 func TestOnMessage(t *testing.T) {

@@ -9,4 +9,4 @@ RUN go build -v .
 
 RUN apk del git
 
-CMD ["./broker"]
+CMD ["./brokerha"]
