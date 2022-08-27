@@ -26,7 +26,7 @@ var (
 
 // main will start discovery instance and mqtt broker instance.
 func main() {
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	log.SetFlags(log.Ldate | log.Ltime | log.Llongfile)
 
 	// This sleep is needed in case container is killed by k8s.
 	// Without it, there is possibility that POD will be restarted faster than memberlist will
