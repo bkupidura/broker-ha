@@ -3,7 +3,6 @@ package broker
 import (
 	"bytes"
 	"context"
-	"errors"
 	"log"
 	"net"
 	"testing"
@@ -12,7 +11,6 @@ import (
 	"github.com/hashicorp/memberlist"
 	mqtt "github.com/mochi-co/mqtt/server"
 	"github.com/mochi-co/mqtt/server/events"
-	"github.com/mochi-co/mqtt/server/listeners"
 	"github.com/stretchr/testify/require"
 
 	"brokerha/internal/discovery"
@@ -38,35 +36,34 @@ func TestOnMessage(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	tests := []struct {
-		inputListenerErr bool
-		expectedErr      error
-		expectedLog      string
+		port        int
+		expectedErr string
+		expectedLog string
 	}{
 		{
-			inputListenerErr: true,
-			expectedErr:      errors.New("listen failure"),
+			port:        -1,
+			expectedErr: "listen tcp: address -1: invalid port",
 		},
 		{
-			inputListenerErr: false,
-			expectedLog:      "cluster broker started\nstarting SendRetained queue worker\nstarting MQTTPublishFromCluster queue worker\n",
+			port:        1883,
+			expectedLog: "cluster broker started\nstarting SendRetained queue worker\nstarting MQTTPublishFromCluster queue worker\n",
 		},
 	}
 	log.SetFlags(0)
 	var logOutput bytes.Buffer
 	log.SetOutput(&logOutput)
 
-	auth := &Auth{}
-
 	for _, test := range tests {
 		logOutput.Reset()
-		listener := listeners.NewMockListener("t1", ":1883")
-		listener.ErrListen = test.inputListenerErr
 
-		_, ctxCancel, err := New(listener, auth)
+		_, ctxCancel, err := New(&Options{
+			MQTTPort: test.port,
+		})
 
 		time.Sleep(1 * time.Millisecond)
-
-		require.Equal(t, test.expectedErr, err)
+		if err != nil {
+			require.Equal(t, test.expectedErr, err.Error())
+		}
 		require.Equal(t, test.expectedLog, logOutput.String())
 
 		if err == nil {

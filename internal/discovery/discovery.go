@@ -164,10 +164,10 @@ func (d *Discovery) FormCluster(minInitSleep, maxInitSleep int) error {
 }
 
 // New creates new discovery instance.
-func New(domain string, mlConfig *memberlist.Config) (*Discovery, context.CancelFunc, error) {
+func New(opts *Options) (*Discovery, context.CancelFunc, error) {
 	d := &Discovery{
-		domain:      domain,
-		config:      mlConfig,
+		domain:      opts.Domain,
+		config:      opts.MemberListConfig,
 		selfAddress: make(map[string]struct{}),
 	}
 
@@ -177,7 +177,7 @@ func New(domain string, mlConfig *memberlist.Config) (*Discovery, context.Cancel
 	}
 
 	for _, lip := range localIPs {
-		d.selfAddress[fmt.Sprintf("%s:%d", lip.String(), mlConfig.BindPort)] = struct{}{}
+		d.selfAddress[fmt.Sprintf("%s:%d", lip.String(), d.config.BindPort)] = struct{}{}
 	}
 
 	d.config.LogOutput = ioutil.Discard

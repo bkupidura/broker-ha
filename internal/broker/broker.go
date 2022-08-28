@@ -2,6 +2,7 @@ package broker
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	mqtt "github.com/mochi-co/mqtt/server"
@@ -27,14 +28,18 @@ func onMessage(cl events.Client, pk events.Packet) (pkx events.Packet, err error
 }
 
 // New creates and starts mqtt broker.
-func New(listener listeners.Listener, auth *Auth) (*mqtt.Server, context.CancelFunc, error) {
-	options := &mqtt.Options{
+func New(opts *Options) (*mqtt.Server, context.CancelFunc, error) {
+	mqttServer := mqtt.NewServer(&mqtt.Options{
 		BufferSize:      0,
 		BufferBlockSize: 0,
 		InflightTTL:     60 * 5,
-	}
+	})
 
-	mqttServer := mqtt.NewServer(options)
+	listener := listeners.NewTCP("tcp", fmt.Sprintf(":%d", opts.MQTTPort))
+	auth := &Auth{
+		Users:   opts.AuthUsers,
+		UserACL: opts.AuthACL,
+	}
 
 	if err := mqttServer.AddListener(listener, &listeners.Config{Auth: auth}); err != nil {
 		return nil, nil, err

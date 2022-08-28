@@ -26,7 +26,10 @@ func TestDiscoveryMembersHandler(t *testing.T) {
 	mlConfig.AdvertisePort = 7946
 	mlConfig.LogOutput = ioutil.Discard
 
-	disco, _, err := discovery.New("test", mlConfig)
+	disco, _, err := discovery.New(&discovery.Options{
+		Domain:           "test",
+		MemberListConfig: mlConfig,
+	})
 	if err != nil {
 		t.Fatalf("discovery.New error: %s", err)
 	}
@@ -194,7 +197,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 	if token := mqttClient.Subscribe("TestMqttClientInflightHandler", byte(2), nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("mqttClient.Subscribe error: %s", token.Error())
 	}
-	mqttClient.Disconnect(1)
+	mqttClient.Disconnect(10)
 	if err := mqttServer.Publish("TestMqttClientInflightHandler", []byte("test"), true); err != nil {
 		t.Fatalf("mqttServer.Publish error: %s", err)
 	}

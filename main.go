@@ -1,13 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"sync"
 	"time"
-
-	"github.com/mochi-co/mqtt/server/listeners"
 
 	"brokerha/internal/api"
 	"brokerha/internal/broker"
@@ -43,29 +40,38 @@ func main() {
 	if subMLConfig == nil {
 		log.Fatal("cluster.config is nil")
 	}
-	mlConfig := createMemberlistConfig(subMLConfig)
 
-	disco, _, err := discovery.New(config.GetString("discovery.domain"), mlConfig)
+	disco, _, err := discovery.New(&discovery.Options{
+		Domain:           config.GetString("discovery.domain"),
+		MemberListConfig: createMemberlistConfig(subMLConfig),
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	mqttAuth := &broker.Auth{
-		Users:   config.GetStringMapString("mqtt.user"),
-		UserACL: make(map[string][]broker.ACL),
-	}
-	config.UnmarshalKey("mqtt.acl", &mqttAuth.UserACL)
+	mqttUserACL := make(map[string][]broker.ACL)
+	config.UnmarshalKey("mqtt.acl", &mqttUserACL)
 
-	mqttListener := listeners.NewTCP("tcp", fmt.Sprintf(":%d", config.GetInt("mqtt.port")))
-
-	mqttServer, _, err := broker.New(mqttListener, mqttAuth)
+	mqttServer, _, err := broker.New(&broker.Options{
+		MQTTPort:  config.GetInt("mqtt.port"),
+		AuthUsers: config.GetStringMapString("mqtt.user"),
+		AuthACL:   mqttUserACL,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	metric.Initialize(disco, mqttServer)
+	metric.Initialize(&metric.Options{
+		Discovery: disco,
+		Broker:    mqttServer,
+	})
 
-	httpRouter := api.NewRouter(disco, mqttServer, config.GetInt("cluster.expected_members"), config.GetStringMapString("api.user"))
+	httpRouter := api.NewRouter(&api.Options{
+		Discovery:              disco,
+		Broker:                 mqttServer,
+		ClusterExpectedMembers: config.GetInt("cluster.expected_members"),
+		AuthUsers:              config.GetStringMapString("api.user"),
+	})
 
 	var wg sync.WaitGroup
 

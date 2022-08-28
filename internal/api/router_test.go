@@ -169,7 +169,10 @@ func TestNewRouter(t *testing.T) {
 	mlConfig.ProbeInterval = 10
 	mlConfig.LogOutput = ioutil.Discard
 
-	disco, _, err := discovery.New("test", mlConfig)
+	disco, _, err := discovery.New(&discovery.Options{
+		Domain:           "test",
+		MemberListConfig: mlConfig,
+	})
 	if err != nil {
 		t.Fatalf("discovery.New error: %s", err)
 	}
@@ -186,7 +189,12 @@ func TestNewRouter(t *testing.T) {
 		}
 		w := httptest.NewRecorder()
 
-		router := NewRouter(disco, mqttServer, 1, test.auth)
+		router := NewRouter(&Options{
+			Discovery:              disco,
+			Broker:                 mqttServer,
+			ClusterExpectedMembers: 1,
+			AuthUsers:              test.auth,
+		})
 
 		router.ServeHTTP(w, req)
 

@@ -463,7 +463,10 @@ func TestNew(t *testing.T) {
 		if test.mockMemberlistCreate != nil {
 			memberlistCreate = test.mockMemberlistCreate
 		}
-		output, cancelFunc, err := New("test", test.inputMemberlistConfig())
+		output, cancelFunc, err := New(&Options{
+			Domain:           "test",
+			MemberListConfig: test.inputMemberlistConfig(),
+		})
 		require.Equal(t, test.expectedErr, err)
 		if err != nil {
 			continue

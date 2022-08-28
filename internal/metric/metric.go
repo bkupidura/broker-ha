@@ -74,7 +74,7 @@ var (
 )
 
 // Initialize register prometheus collectors and start collector.
-func Initialize(disco *discovery.Discovery, mqttServer *mqtt.Server) {
+func Initialize(opts *Options) {
 	prometheus.MustRegister(clusterMembers)
 	prometheus.MustRegister(clusterMemberHealth)
 	prometheus.MustRegister(clusterMQTTPublishFromCluster)
@@ -91,7 +91,7 @@ func Initialize(disco *discovery.Discovery, mqttServer *mqtt.Server) {
 	prometheus.MustRegister(publishSent)
 	prometheus.MustRegister(inflight)
 
-	go collect(disco, mqttServer)
+	go collect(opts.Discovery, opts.Broker)
 }
 
 // collect will refresh Prometheus collectors.
