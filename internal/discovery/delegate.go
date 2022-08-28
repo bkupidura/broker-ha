@@ -1,9 +1,8 @@
 package discovery
 
 import (
-	"log"
-
 	"encoding/json"
+	"log"
 
 	"github.com/hashicorp/memberlist"
 )
@@ -52,15 +51,14 @@ func (d *delegate) LocalState(join bool) []byte {
 func (d *delegate) MergeRemoteState(buf []byte, join bool) {}
 
 // delegateEvent implements memberlist.EventDelegate.
-// It stores selfAddress which is *memberlist.Node.Address() in format 'ip:port'.
 type delegateEvent struct {
-	selfAddress string
+	selfAddress map[string]struct{}
 }
 
 // NotifyJoin is executed when node join cluster.
 // We are skipping NotifyJoin for ourselfs.
 func (d *delegateEvent) NotifyJoin(n *memberlist.Node) {
-	if d.selfAddress == n.Address() {
+	if _, ok := d.selfAddress[n.Address()]; ok {
 		return
 	}
 	log.Printf("new cluster member %s", n.Address())

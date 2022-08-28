@@ -130,7 +130,9 @@ func TestDelegateEventNotifyJoin(t *testing.T) {
 	log.SetOutput(&logOutput)
 
 	d := &delegateEvent{
-		selfAddress: "127.0.0.1:7946",
+		selfAddress: map[string]struct{}{
+			"127.0.0.1:7946": {},
+		},
 	}
 	for _, test := range tests {
 		logOutput.Reset()

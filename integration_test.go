@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/alexliesenfeld/health"
-	MQTT "github.com/eclipse/paho.mqtt.golang"
+	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/hashicorp/memberlist"
 	"github.com/stretchr/testify/require"
 )
@@ -28,19 +28,19 @@ func TestBrokerHA(t *testing.T) {
 
 	time.Sleep(time.Duration(maxInitSleep) * time.Second)
 
-	mqttReceiveQueue := make(chan MQTT.Message, 5)
-	mqttOnMessage := func(client MQTT.Client, message MQTT.Message) {
+	mqttReceiveQueue := make(chan paho.Message, 5)
+	mqttOnMessage := func(client paho.Client, message paho.Message) {
 		mqttReceiveQueue <- message
 	}
 
-	mqttConnOpts := MQTT.NewClientOptions().
+	mqttConnOpts := paho.NewClientOptions().
 		AddBroker("127.0.0.1:1883").
 		SetUsername("test").
 		SetPassword("test")
 
-	mqttClient := MQTT.NewClient(mqttConnOpts)
+	mqttClient := paho.NewClient(mqttConnOpts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
-		t.Fatalf("MQTT.NewClient error: %s", token.Error())
+		t.Fatalf("paho.NewClient error: %s", token.Error())
 	}
 
 	if token := mqttClient.Subscribe("from_cluster/#", byte(2), mqttOnMessage); token.Wait() && token.Error() != nil {
@@ -87,15 +87,19 @@ func TestBrokerHA(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	expectedMessage := string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7947"],"Payload":"dGVzdF9tZXNzYWdlX29uZQ==","Topic":"to_cluster/topic_one","Retain":true,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":"dGVzdF9tZXNzYWdlX3R3bw==","Topic":"to_cluster/topic_two","Retain":true,"Qos":0}]`)...))
-	require.Equal(t, expectedMessage, string(md.GetData()))
+	// Broker can deliver messages in different order than sent.
+	expectedMessageUnordered := []string{
+		string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7947"],"Payload":"dGVzdF9tZXNzYWdlX29uZQ==","Topic":"to_cluster/topic_one","Retain":true,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":"dGVzdF9tZXNzYWdlX3R3bw==","Topic":"to_cluster/topic_two","Retain":true,"Qos":0}]`)...)),
+		string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7947"],"Payload":"dGVzdF9tZXNzYWdlX3R3bw==","Topic":"to_cluster/topic_two","Retain":true,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":"dGVzdF9tZXNzYWdlX29uZQ==","Topic":"to_cluster/topic_one","Retain":true,"Qos":0}]`)...)),
+	}
+	require.Contains(t, expectedMessageUnordered, string(md.GetData()))
 
 	if token := mqttClient.Publish("to_cluster/topic_three", 1, false, "test_message_three"); token.Wait() && token.Error() != nil {
 		t.Fatalf("mqttClient.Publish error: %s", token.Error())
 	}
 
 	time.Sleep(10 * time.Millisecond)
-	expectedMessage = string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":"dGVzdF9tZXNzYWdlX3RocmVl","Topic":"to_cluster/topic_three","Retain":false,"Qos":1}]`)...))
+	expectedMessage := string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":"dGVzdF9tZXNzYWdlX3RocmVl","Topic":"to_cluster/topic_three","Retain":false,"Qos":1}]`)...))
 	require.Equal(t, expectedMessage, string(md.GetData()))
 
 	var brokerHAMember *memberlist.Node
@@ -153,11 +157,7 @@ func TestBrokerHA(t *testing.T) {
 			}
 		} else {
 			for _, shouldFailCheckName := range []string{"liveness_cluster_health", "liveness_cluster_discovered_members"} {
-				for checkName, check := range *healthResult.Details {
-					if checkName == shouldFailCheckName {
-						require.Equal(t, health.StatusDown, check.Status, fmt.Sprintf("unexpected status for %s", checkName))
-					}
-				}
+				require.Equal(t, health.StatusDown, (*healthResult.Details)[shouldFailCheckName].Status)
 			}
 		}
 	}

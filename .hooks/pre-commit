@@ -1,8 +1,8 @@
 #!/bin/sh
-STAGED_GO_FILES=$(git diff --cached --name-only | grep ".go$")
+GO_FILES=$(find . -type f -iname '*.go')
 PASS=true
 
-for FILE in ${STAGED_GO_FILES}
+for FILE in ${GO_FILES}
 do
 
     UNFORMATTED=$(gofmt -l -s ${FILE})
@@ -25,16 +25,21 @@ if [ ${RC} -ne 0 ]; then
     PASS=false
 fi
 
-TEST_DIRS=$(find . -type d -maxdepth 1 -not -path '*/.*')
+TEST_DIRS=$(find . -type d -not -path '*/.*')
 
 for TEST_DIR in ${TEST_DIRS}
 do
     pushd ${TEST_DIR}
-    go test . 2> /dev/null
-    RC=$?
-    if [ ${RC} -ne 0 ]; then
-        echo "test for ${TEST_DIR} is failing"
-        PASS=false
+    TEST_NUMBER=$(find . -maxdepth 1 -type f -iname '*_test.go'|wc -l)
+    if [ "${TEST_NUMBER}" -gt 0 ]; then
+        go test . 2> /dev/null
+        RC=$?
+        if [ ${RC} -ne 0 ]; then
+            echo "test for ${TEST_DIR} is failing"
+            PASS=false
+        fi
+    else 
+        echo "skipping ${TEST_DIR}, no test found"
     fi
     popd
 done

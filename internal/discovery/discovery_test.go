@@ -11,10 +11,9 @@ import (
 	"testing"
 	"time"
 
+	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/memberlist"
 	"github.com/stretchr/testify/require"
-
-	multierror "github.com/hashicorp/go-multierror"
 )
 
 func TestShutdown(t *testing.T) {
@@ -28,17 +27,49 @@ func TestShutdown(t *testing.T) {
 	}
 
 	disco := &Discovery{
-		domain:      "test",
-		selfAddress: "127.0.0.1:7946",
-		config:      mlConfig,
-		ml:          ml,
+		domain: "test",
+		selfAddress: map[string]struct{}{
+			"127.0.0.1:7946": {},
+		},
+		config: mlConfig,
+		ml:     ml,
 	}
+	defer disco.Shutdown()
+
 	err = disco.FormCluster(1, 2)
 	if err != nil {
 		t.Fatalf("disco.FormCluster() error: %s", err)
 	}
 
 	require.Nil(t, disco.Shutdown())
+}
+
+func TestLeave(t *testing.T) {
+	mlConfig := memberlist.DefaultLocalConfig()
+	mlConfig.Name = "node1"
+	mlConfig.BindAddr = "127.0.0.1"
+	mlConfig.LogOutput = ioutil.Discard
+	ml, err := memberlist.Create(mlConfig)
+	if err != nil {
+		t.Fatalf("memberlist.Create error: %s", err)
+	}
+
+	disco := &Discovery{
+		domain: "test",
+		selfAddress: map[string]struct{}{
+			"127.0.0.1:7946": {},
+		},
+		config: mlConfig,
+		ml:     ml,
+	}
+	defer disco.Shutdown()
+
+	err = disco.FormCluster(1, 2)
+	if err != nil {
+		t.Fatalf("disco.FormCluster() error: %s", err)
+	}
+
+	require.Nil(t, disco.Leave(100))
 }
 
 func TestJoin(t *testing.T) {
@@ -64,10 +95,12 @@ func TestJoin(t *testing.T) {
 	}
 
 	disco := &Discovery{
-		domain:      "test",
-		selfAddress: "127.0.0.1:7946",
-		config:      mlConfig,
-		ml:          ml,
+		domain: "test",
+		selfAddress: map[string]struct{}{
+			"127.0.0.1:7946": {},
+		},
+		config: mlConfig,
+		ml:     ml,
 	}
 	defer disco.Shutdown()
 
@@ -90,10 +123,12 @@ func TestGetHealthScore(t *testing.T) {
 	defer ml.Shutdown()
 
 	disco := &Discovery{
-		domain:      "test",
-		selfAddress: "127.0.0.1:7946",
-		config:      mlConfig,
-		ml:          ml,
+		domain: "test",
+		selfAddress: map[string]struct{}{
+			"127.0.0.1:7946": {},
+		},
+		config: mlConfig,
+		ml:     ml,
 	}
 	err = disco.FormCluster(1, 2)
 	if err != nil {
@@ -143,10 +178,12 @@ func TestSendReliable(t *testing.T) {
 	defer ml.Shutdown()
 
 	disco := &Discovery{
-		domain:      "test",
-		selfAddress: "127.0.0.1:7946",
-		config:      mlConfig,
-		ml:          ml,
+		domain: "test",
+		selfAddress: map[string]struct{}{
+			"127.0.0.1:7946": {},
+		},
+		config: mlConfig,
+		ml:     ml,
 	}
 	err = disco.FormCluster(1, 2)
 	if err != nil {
@@ -200,10 +237,12 @@ func TestMembers(t *testing.T) {
 	defer ml.Shutdown()
 
 	disco := &Discovery{
-		domain:      "test",
-		selfAddress: "127.0.0.1:7946",
-		config:      mlConfig,
-		ml:          ml,
+		domain: "test",
+		selfAddress: map[string]struct{}{
+			"127.0.0.1:7946": {},
+		},
+		config: mlConfig,
+		ml:     ml,
 	}
 	err = disco.FormCluster(1, 2)
 	if err != nil {
@@ -352,10 +391,12 @@ func TestFormCluster(t *testing.T) {
 		}
 
 		disco := &Discovery{
-			domain:      "test",
-			selfAddress: "10.10.10.10:7946",
-			config:      mlConfig,
-			ml:          ml,
+			domain: "test",
+			selfAddress: map[string]struct{}{
+				"10.10.10.10:7946": {},
+			},
+			config: mlConfig,
+			ml:     ml,
 		}
 
 		err = disco.FormCluster(1, 2)
@@ -379,26 +420,6 @@ func TestNew(t *testing.T) {
 				return nil, errors.New("netInterfaceAddrs mock error")
 			},
 			expectedErr:           errors.New("netInterfaceAddrs mock error"),
-			inputMemberlistConfig: memberlist.DefaultLocalConfig,
-		},
-		{
-			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
-				_, ip1, _ := net.ParseCIDR("127.0.0.1/24")
-				ip1.IP = net.ParseIP("127.0.0.1")
-				return []net.Addr{ip1}, nil
-			},
-			expectedErr:           errors.New("more than 1 local IP available"),
-			inputMemberlistConfig: memberlist.DefaultLocalConfig,
-		},
-		{
-			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
-				_, ip1, _ := net.ParseCIDR("1.2.3.4/24")
-				ip1.IP = net.ParseIP("1.2.3.4")
-				_, ip2, _ := net.ParseCIDR("2.3.4.5/24")
-				ip2.IP = net.ParseIP("2.3.4.5")
-				return []net.Addr{ip1, ip2}, nil
-			},
-			expectedErr:           errors.New("more than 1 local IP available"),
 			inputMemberlistConfig: memberlist.DefaultLocalConfig,
 		},
 		{
@@ -442,7 +463,10 @@ func TestNew(t *testing.T) {
 		if test.mockMemberlistCreate != nil {
 			memberlistCreate = test.mockMemberlistCreate
 		}
-		output, cancelFunc, err := New("test", test.inputMemberlistConfig())
+		output, cancelFunc, err := New(&Options{
+			Domain:           "test",
+			MemberListConfig: test.inputMemberlistConfig(),
+		})
 		require.Equal(t, test.expectedErr, err)
 		if err != nil {
 			continue
@@ -451,9 +475,15 @@ func TestNew(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 
 		require.Equal(t, "test", output.domain)
-		require.Equal(t, "10.10.10.10:7946", output.selfAddress)
+		require.Equal(t, map[string]struct{}{
+			"10.10.10.10:7946": {},
+		}, output.selfAddress)
 		require.Equal(t, &delegate{}, output.config.Delegate)
-		require.Equal(t, &delegateEvent{"10.10.10.10:7946"}, output.config.Events)
+		require.Equal(t, &delegateEvent{
+			map[string]struct{}{
+				"10.10.10.10:7946": {},
+			},
+		}, output.config.Events)
 		require.Equal(t, test.expectedLog, logOutput.String())
 	}
 }
@@ -666,10 +696,12 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 	defer m3.Shutdown()
 
 	disco := &Discovery{
-		ml:          m3,
-		selfAddress: "127.0.0.1:7948",
-		config:      c3,
-		domain:      "test",
+		ml: m3,
+		selfAddress: map[string]struct{}{
+			"127.0.0.1:7948": {},
+		},
+		config: c3,
+		domain: "test",
 	}
 
 	if _, err := m3.Join([]string{"127.0.0.1:7946", "127.0.0.1:7947"}); err != nil {
@@ -736,7 +768,8 @@ func TestGetLocalIPs(t *testing.T) {
 				return []net.Addr{ipnet1, ipnet2}, nil
 			},
 			expectedOutput: map[string]net.IP{
-				"1.2.3.4": net.ParseIP("1.2.3.4"),
+				"1.2.3.4":   net.ParseIP("1.2.3.4"),
+				"127.0.0.1": net.ParseIP("127.0.0.1"),
 			},
 		},
 		{

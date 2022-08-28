@@ -1,20 +1,15 @@
 package main
 
 import (
-	"fmt"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
-	"net/http"
-
-	"broker/discovery"
-	"broker/server"
-
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/mochi-co/mqtt/server/listeners"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"brokerha/internal/api"
+	"brokerha/internal/broker"
+	"brokerha/internal/discovery"
+	"brokerha/internal/metric"
 )
 
 var (
@@ -28,7 +23,7 @@ var (
 
 // main will start discovery instance and mqtt broker instance.
 func main() {
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	log.SetFlags(log.Ldate | log.Ltime | log.Llongfile)
 
 	// This sleep is needed in case container is killed by k8s.
 	// Without it, there is possibility that POD will be restarted faster than memberlist will
@@ -45,53 +40,37 @@ func main() {
 	if subMLConfig == nil {
 		log.Fatal("cluster.config is nil")
 	}
-	mlConfig := createMemberlistConfig(subMLConfig)
 
-	disco, _, err := discovery.New(config.GetString("discovery.domain"), mlConfig)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	mqttAuth := &server.Auth{
-		Users:   config.GetStringMapString("mqtt.user"),
-		UserACL: make(map[string][]server.ACL),
-	}
-	config.UnmarshalKey("mqtt.acl", &mqttAuth.UserACL)
-
-	mqttListener := listeners.NewTCP("tcp", fmt.Sprintf(":%d", config.GetInt("mqtt.port")))
-
-	mqttServer, _, err := server.New(mqttListener, mqttAuth)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	initializeMetrics()
-	go metricCollector(disco, mqttServer)
-
-	httpRouter := chi.NewRouter()
-
-	httpRouter.Group(func(r chi.Router) {
-		r.Use(middleware.Recoverer)
-		r.Method("GET", "/ready", readyHandler(disco))
-		r.Method("GET", "/healthz", healthzHandler(disco, config.GetInt("cluster.expected_members")))
-		r.Method("GET", "/metrics", promhttp.Handler())
+	disco, _, err := discovery.New(&discovery.Options{
+		Domain:           config.GetString("discovery.domain"),
+		MemberListConfig: createMemberlistConfig(subMLConfig),
 	})
-	httpRouter.Group(func(r chi.Router) {
-		r.Use(middleware.CleanPath)
-		if apiAuth := config.GetStringMapString("api.user"); len(apiAuth) > 0 {
-			log.Printf("basic auth for API HTTP endpoint enabled")
-			r.Use(middleware.BasicAuth("api", apiAuth))
-		} else {
-			log.Printf("basic auth for API HTTP endpoint disabled")
-		}
-		r.Use(middleware.Recoverer)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-		r.Get("/api/discovery/members", apiDiscoveryMembersHandler(disco))
-		r.Get("/api/mqtt/clients", apiMqttClientsHandler(mqttServer))
-		r.Post("/api/mqtt/client/stop", apiMqttClientStopHandler(mqttServer))
-		r.Post("/api/mqtt/client/inflight", apiMqttClientInflightHandler(mqttServer))
-		r.Post("/api/mqtt/topic/messages", apiMqttTopicMessagesHandler(mqttServer))
-		r.Post("/api/mqtt/topic/subscribers", apiMqttTopicSubscribersHandler(mqttServer))
+	mqttUserACL := make(map[string][]broker.ACL)
+	config.UnmarshalKey("mqtt.acl", &mqttUserACL)
+
+	mqttServer, _, err := broker.New(&broker.Options{
+		MQTTPort:  config.GetInt("mqtt.port"),
+		AuthUsers: config.GetStringMapString("mqtt.user"),
+		AuthACL:   mqttUserACL,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	metric.Initialize(&metric.Options{
+		Discovery: disco,
+		Broker:    mqttServer,
+	})
+
+	httpRouter := api.NewRouter(&api.Options{
+		Discovery:              disco,
+		Broker:                 mqttServer,
+		ClusterExpectedMembers: config.GetInt("cluster.expected_members"),
+		AuthUsers:              config.GetStringMapString("api.user"),
 	})
 
 	var wg sync.WaitGroup

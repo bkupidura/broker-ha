@@ -2,16 +2,14 @@ package discovery
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"math/rand"
 	"net"
 	"sort"
 	"time"
-
-	"encoding/json"
-	"io/ioutil"
-	"math/rand"
 
 	"github.com/hashicorp/memberlist"
 )
@@ -58,7 +56,7 @@ type MQTTPublishMessage struct {
 // It should be created by New().
 type Discovery struct {
 	domain      string
-	selfAddress string
+	selfAddress map[string]struct{}
 	config      *memberlist.Config
 	ml          *memberlist.Memberlist
 }
@@ -67,6 +65,11 @@ type Discovery struct {
 // Its not gracefull exit, members will need to detect that node is no longer part of cluster.
 func (d *Discovery) Shutdown() error {
 	return d.ml.Shutdown()
+}
+
+// Leave memberlist cluster.
+func (d *Discovery) Leave(duration time.Duration) error {
+	return d.ml.Leave(duration)
 }
 
 // Join memberlist cluster.
@@ -100,7 +103,7 @@ func (d *Discovery) SendReliable(member *memberlist.Node, dataType string, data 
 func (d *Discovery) Members(withSelf bool) []*memberlist.Node {
 	var members []*memberlist.Node
 	for _, member := range d.ml.Members() {
-		if !withSelf && member.Address() == d.selfAddress {
+		if _, ok := d.selfAddress[member.Address()]; !withSelf && ok {
 			continue
 		}
 		members = append(members, member)
@@ -138,7 +141,7 @@ func (d *Discovery) FormCluster(minInitSleep, maxInitSleep int) error {
 
 	if initialMemberIPs != nil {
 		for _, ipPortPair := range initialMemberIPs {
-			if ipPortPair == d.selfAddress {
+			if _, ok := d.selfAddress[ipPortPair]; ok {
 				continue
 			}
 			members = append(members, ipPortPair)
@@ -161,12 +164,11 @@ func (d *Discovery) FormCluster(minInitSleep, maxInitSleep int) error {
 }
 
 // New creates new discovery instance.
-// Currently discovery can be started only on nodes with single local IP - no multihoming.
-// But this is default in K8s.
-func New(domain string, mlConfig *memberlist.Config) (*Discovery, context.CancelFunc, error) {
+func New(opts *Options) (*Discovery, context.CancelFunc, error) {
 	d := &Discovery{
-		domain: domain,
-		config: mlConfig,
+		domain:      opts.Domain,
+		config:      opts.MemberListConfig,
+		selfAddress: make(map[string]struct{}),
 	}
 
 	localIPs, err := getLocalIPs()
@@ -174,12 +176,8 @@ func New(domain string, mlConfig *memberlist.Config) (*Discovery, context.Cancel
 		return nil, nil, err
 	}
 
-	if len(localIPs) == 1 {
-		for _, lip := range localIPs {
-			d.selfAddress = fmt.Sprintf("%s:%d", lip.String(), mlConfig.BindPort)
-		}
-	} else {
-		return nil, nil, errors.New("more than 1 local IP available")
+	for _, lip := range localIPs {
+		d.selfAddress[fmt.Sprintf("%s:%d", lip.String(), d.config.BindPort)] = struct{}{}
 	}
 
 	d.config.LogOutput = ioutil.Discard
@@ -271,7 +269,7 @@ func handleMQTTPublishToCluster(ctx context.Context, disco *Discovery) {
 	}
 }
 
-// Get all IPv4 addresses except loopback.
+// Get all IPv4 addresses.
 func getLocalIPs() (map[string]net.IP, error) {
 	localIPs := make(map[string]net.IP)
 
@@ -280,7 +278,7 @@ func getLocalIPs() (map[string]net.IP, error) {
 		return nil, err
 	}
 	for _, address := range adresses {
-		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+		if ipnet, ok := address.(*net.IPNet); ok {
 			if ipnet.IP.To4() != nil {
 				localIPs[ipnet.IP.String()] = ipnet.IP
 			}
