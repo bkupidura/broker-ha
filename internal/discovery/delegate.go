@@ -5,10 +5,15 @@ import (
 	"log"
 
 	"github.com/hashicorp/memberlist"
+
+	"brokerha/internal/bus"
+	"brokerha/internal/types"
 )
 
 // delegate implements memberlist.Delegate.
-type delegate struct{}
+type delegate struct {
+	bus *bus.Bus
+}
 
 func (d *delegate) NodeMeta(limit int) []byte {
 	return []byte{}
@@ -27,13 +32,13 @@ func (d *delegate) NotifyMsg(b []byte) {
 
 	switch messageType {
 	case queueDataTypes["MQTTPublish"]:
-		var messages []*MQTTPublishMessage
+		var messages []*types.MQTTPublishMessage
 		if err := json.Unmarshal(messageData, &messages); err != nil {
 			log.Printf("received malformed message from cluster for MQTTPublish")
 			return
 		}
 		for _, message := range messages {
-			MQTTPublishFromCluster <- message
+			d.bus.Publish("cluster:message_from", message)
 		}
 	default:
 		log.Printf("received unknown message type from cluster: %c", messageType)
@@ -53,6 +58,7 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {}
 // delegateEvent implements memberlist.EventDelegate.
 type delegateEvent struct {
 	selfAddress map[string]struct{}
+	bus         *bus.Bus
 }
 
 // NotifyJoin is executed when node join cluster.
@@ -62,8 +68,7 @@ func (d *delegateEvent) NotifyJoin(n *memberlist.Node) {
 		return
 	}
 	log.Printf("new cluster member %s", n.Address())
-	log.Printf("sending retained messages to %s", n.Address())
-	MQTTSendRetained <- n
+	d.bus.Publish("cluster:new_member", n.Address())
 }
 
 // Notifyleave is executed when node leave cluster.

@@ -9,6 +9,8 @@ import (
 	"github.com/hashicorp/memberlist"
 	"github.com/stretchr/testify/require"
 
+	"brokerha/internal/broker"
+	"brokerha/internal/bus"
 	"brokerha/internal/discovery"
 )
 
@@ -169,17 +171,23 @@ func TestNewRouter(t *testing.T) {
 	mlConfig.ProbeInterval = 10
 	mlConfig.LogOutput = ioutil.Discard
 
-	disco, _, err := discovery.New(&discovery.Options{
+	evBus := bus.New()
+	disco, ctxCancel, err := discovery.New(&discovery.Options{
 		Domain:           "test",
 		MemberListConfig: mlConfig,
+		Bus:              evBus,
 	})
-	if err != nil {
-		t.Fatalf("discovery.New error: %s", err)
-	}
+	require.Nil(t, err)
+	defer ctxCancel()
 	defer disco.Shutdown()
 
-	mqttServer := newMqttBroker()
-	defer mqttServer.Close()
+	b, ctxCancel, err := broker.New(&broker.Options{
+		MQTTPort: 1883,
+		Bus:      evBus,
+	})
+	defer ctxCancel()
+	defer b.Shutdown()
+	require.Nil(t, err)
 
 	for _, test := range tests {
 		req := httptest.NewRequest(test.inputMethod, test.inputPath, nil)
@@ -191,7 +199,7 @@ func TestNewRouter(t *testing.T) {
 
 		router := NewRouter(&Options{
 			Discovery:              disco,
-			Broker:                 mqttServer,
+			Broker:                 b,
 			ClusterExpectedMembers: 1,
 			AuthUsers:              test.auth,
 		})

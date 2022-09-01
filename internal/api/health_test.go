@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/memberlist"
 	"github.com/stretchr/testify/require"
 
+	"brokerha/internal/bus"
 	"brokerha/internal/discovery"
 )
 
@@ -35,9 +36,11 @@ func TestReadyHandler(t *testing.T) {
 	mlConfig.ProbeInterval = 10
 	mlConfig.LogOutput = ioutil.Discard
 
+	evBus := bus.New()
 	disco, _, err := discovery.New(&discovery.Options{
 		Domain:           "test",
 		MemberListConfig: mlConfig,
+		Bus:              evBus,
 	})
 	if err != nil {
 		t.Fatalf("discovery.New error: %s", err)
@@ -83,9 +86,11 @@ func TestHealthzHandler(t *testing.T) {
 	mlConfig.AdvertisePort = 7946
 	mlConfig.LogOutput = ioutil.Discard
 
+	evBus := bus.New()
 	disco, _, err := discovery.New(&discovery.Options{
 		Domain:           "test",
 		MemberListConfig: mlConfig,
+		Bus:              evBus,
 	})
 	if err != nil {
 		t.Fatalf("discovery.New error: %s", err)

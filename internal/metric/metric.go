@@ -4,9 +4,9 @@ import (
 	"log"
 	"time"
 
-	mqtt "github.com/mochi-co/mqtt/server"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"brokerha/internal/broker"
 	"brokerha/internal/discovery"
 )
 
@@ -18,18 +18,6 @@ var (
 	clusterMemberHealth = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "broker_cluster_member_health",
 		Help: "Cluster member health",
-	})
-	clusterMQTTPublishFromCluster = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "broker_cluster_mqtt_publish_from_cluster",
-		Help: "Cluster MQTT publish from cluster queue length",
-	})
-	clusterMQTTPublishToCluster = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "broker_cluster_mqtt_publish_to_cluster",
-		Help: "Cluster MQTT publish to cluster queue length",
-	})
-	clusterMQTTRetainedQueue = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "broker_cluster_mqtt_retained_queue",
-		Help: "Cluster MQTT retained queue length",
 	})
 	retainedMessages = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "broker_retained_messages",
@@ -77,9 +65,6 @@ var (
 func Initialize(opts *Options) {
 	prometheus.MustRegister(clusterMembers)
 	prometheus.MustRegister(clusterMemberHealth)
-	prometheus.MustRegister(clusterMQTTPublishFromCluster)
-	prometheus.MustRegister(clusterMQTTPublishToCluster)
-	prometheus.MustRegister(clusterMQTTRetainedQueue)
 	prometheus.MustRegister(retainedMessages)
 	prometheus.MustRegister(subscriptions)
 	prometheus.MustRegister(clientsConnected)
@@ -95,24 +80,21 @@ func Initialize(opts *Options) {
 }
 
 // collect will refresh Prometheus collectors.
-func collect(disco *discovery.Discovery, mqttServer *mqtt.Server) {
+func collect(disco *discovery.Discovery, broker *broker.Broker) {
 	log.Printf("starting prometheus worker")
 	for {
 		clusterMembers.Set(float64(len(disco.Members(true))))
 		clusterMemberHealth.Set(float64(disco.GetHealthScore()))
-		clusterMQTTPublishFromCluster.Set(float64(len(discovery.MQTTPublishFromCluster)))
-		clusterMQTTPublishToCluster.Set(float64(len(discovery.MQTTPublishToCluster)))
-		clusterMQTTRetainedQueue.Set(float64(len(discovery.MQTTSendRetained)))
-		subscriptions.Set(float64(mqttServer.System.Subscriptions))
-		clientsConnected.Set(float64(mqttServer.System.ClientsConnected))
-		retainedMessages.Set(float64(len(mqttServer.Topics.Messages("#"))))
-		brokerUptime.Set(float64(mqttServer.System.Uptime))
-		messagesRecv.Set(float64(mqttServer.System.MessagesRecv))
-		messagesSent.Set(float64(mqttServer.System.MessagesSent))
-		publishDropped.Set(float64(mqttServer.System.PublishDropped))
-		publishRecv.Set(float64(mqttServer.System.PublishRecv))
-		publishSent.Set(float64(mqttServer.System.PublishSent))
-		inflight.Set(float64(mqttServer.System.Inflight))
+		retainedMessages.Set(float64(len(broker.Messages("#"))))
+		subscriptions.Set(float64(broker.SystemInfo().Subscriptions))
+		clientsConnected.Set(float64(broker.SystemInfo().ClientsConnected))
+		brokerUptime.Set(float64(broker.SystemInfo().Uptime))
+		messagesRecv.Set(float64(broker.SystemInfo().MessagesRecv))
+		messagesSent.Set(float64(broker.SystemInfo().MessagesSent))
+		publishDropped.Set(float64(broker.SystemInfo().PublishDropped))
+		publishRecv.Set(float64(broker.SystemInfo().PublishRecv))
+		publishSent.Set(float64(broker.SystemInfo().PublishSent))
+		inflight.Set(float64(broker.SystemInfo().Inflight))
 
 		time.Sleep(10 * time.Second)
 	}

@@ -3,20 +3,21 @@ package api
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/hashicorp/memberlist"
-	mqtt "github.com/mochi-co/mqtt/server"
-	"github.com/mochi-co/mqtt/server/listeners"
 	"github.com/stretchr/testify/require"
 
+	"brokerha/internal/broker"
+	"brokerha/internal/bus"
 	"brokerha/internal/discovery"
+	"brokerha/internal/types"
 )
 
 func TestDiscoveryMembersHandler(t *testing.T) {
@@ -26,14 +27,15 @@ func TestDiscoveryMembersHandler(t *testing.T) {
 	mlConfig.AdvertisePort = 7946
 	mlConfig.LogOutput = ioutil.Discard
 
-	disco, _, err := discovery.New(&discovery.Options{
+	evBus := bus.New()
+	disco, ctxCancel, err := discovery.New(&discovery.Options{
 		Domain:           "test",
 		MemberListConfig: mlConfig,
+		Bus:              evBus,
 	})
-	if err != nil {
-		t.Fatalf("discovery.New error: %s", err)
-	}
+	require.Nil(t, err)
 	defer disco.Shutdown()
+	defer ctxCancel()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/discovery/members", nil)
 	handler := discoveryMembersHandler(disco)
@@ -52,10 +54,21 @@ func TestDiscoveryMembersHandler(t *testing.T) {
 }
 
 func TestMqttClientsHandler(t *testing.T) {
-	mqttServer := newMqttBroker()
-	defer mqttServer.Close()
+	evBus := bus.New()
+	b, ctxCancel, err := broker.New(&broker.Options{
+		MQTTPort:  1883,
+		Bus:       evBus,
+		AuthUsers: map[string]string{"test": "test"},
+	})
+	require.Nil(t, err)
+	defer b.Shutdown()
+	defer ctxCancel()
 
-	mqttConnOpts := paho.NewClientOptions().AddBroker("127.0.0.1:1883").SetAutoReconnect(false)
+	mqttConnOpts := paho.NewClientOptions().
+		AddBroker("127.0.0.1:1883").
+		SetAutoReconnect(false).
+		SetUsername("test").
+		SetPassword("test")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
@@ -64,21 +77,21 @@ func TestMqttClientsHandler(t *testing.T) {
 	defer mqttClient.Disconnect(1)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/mqtt/clients", nil)
-	handler := mqttClientsHandler(mqttServer)
+	handler := mqttClientsHandler(b)
 
 	w := httptest.NewRecorder()
 	handler(w, req)
 	res := w.Result()
 	defer res.Body.Close()
 
-	clients := make(map[string]interface{})
+	var clients []*broker.MQTTClient
 	unmarshalBody(res.Body, &clients)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, 1, len(clients))
-	for clientID, client := range clients {
-		c := client.(map[string]interface{})
-		require.Equal(t, clientID, c["ID"])
+	for _, client := range clients {
+		require.NotNil(t, client)
+		require.Equal(t, []byte("test"), client.Username)
 	}
 }
 
@@ -103,7 +116,7 @@ func TestMqttClientStopHandler(t *testing.T) {
 		},
 		{
 			inputRequest:       map[string]interface{}{"client_id": "missing"},
-			expectedCode:       http.StatusBadRequest,
+			expectedCode:       http.StatusInternalServerError,
 			expectedError:      "unknown client",
 			expectedClientDone: 0,
 		},
@@ -114,10 +127,22 @@ func TestMqttClientStopHandler(t *testing.T) {
 		},
 	}
 
-	mqttServer := newMqttBroker()
-	defer mqttServer.Close()
+	evBus := bus.New()
+	b, ctxCancel, err := broker.New(&broker.Options{
+		MQTTPort:  1883,
+		Bus:       evBus,
+		AuthUsers: map[string]string{"test": "test"},
+	})
+	require.Nil(t, err)
+	defer b.Shutdown()
+	defer ctxCancel()
 
-	mqttConnOpts := paho.NewClientOptions().AddBroker("127.0.0.1:1883").SetAutoReconnect(false).SetClientID("TestMqttClientStopHandler")
+	mqttConnOpts := paho.NewClientOptions().
+		AddBroker("127.0.0.1:1883").
+		SetAutoReconnect(false).
+		SetUsername("test").
+		SetPassword("test").
+		SetClientID("TestMqttClientStopHandler")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
@@ -125,7 +150,7 @@ func TestMqttClientStopHandler(t *testing.T) {
 	}
 	defer mqttClient.Disconnect(1)
 
-	handler := mqttClientStopHandler(mqttServer)
+	handler := mqttClientStopHandler(b)
 
 	for _, test := range tests {
 		body, _ := json.Marshal(test.inputRequest)
@@ -148,11 +173,9 @@ func TestMqttClientStopHandler(t *testing.T) {
 			}
 		}
 
-		client, ok := mqttServer.Clients.Get("TestMqttClientStopHandler")
-		if !ok {
-			t.Fatalf("mqttServer.Clients.Get client missing")
-		}
-		require.Equal(t, test.expectedClientDone, client.State.Done)
+		client, err := b.Client("TestMqttClientStopHandler")
+		require.Nil(t, err)
+		require.Equal(t, test.expectedClientDone, client.Done)
 	}
 }
 
@@ -175,7 +198,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 		},
 		{
 			inputRequest:  map[string]interface{}{"client_id": "missing"},
-			expectedCode:  http.StatusBadRequest,
+			expectedCode:  http.StatusInternalServerError,
 			expectedError: "unknown client",
 		},
 		{
@@ -185,10 +208,22 @@ func TestMqttClientInflightHandler(t *testing.T) {
 		},
 	}
 
-	mqttServer := newMqttBroker()
-	defer mqttServer.Close()
+	evBus := bus.New()
+	b, ctxCancel, err := broker.New(&broker.Options{
+		MQTTPort:  1883,
+		Bus:       evBus,
+		AuthUsers: map[string]string{"test": "test"},
+	})
+	require.Nil(t, err)
+	defer b.Shutdown()
+	defer ctxCancel()
 
-	mqttConnOpts := paho.NewClientOptions().AddBroker("127.0.0.1:1883").SetAutoReconnect(false).SetClientID("TestMqttClientInflightHandler")
+	mqttConnOpts := paho.NewClientOptions().
+		AddBroker("127.0.0.1:1883").
+		SetAutoReconnect(false).
+		SetUsername("test").
+		SetPassword("test").
+		SetClientID("TestMqttClientInflightHandler")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
@@ -197,12 +232,19 @@ func TestMqttClientInflightHandler(t *testing.T) {
 	if token := mqttClient.Subscribe("TestMqttClientInflightHandler", byte(2), nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("mqttClient.Subscribe error: %s", token.Error())
 	}
-	mqttClient.Disconnect(10)
-	if err := mqttServer.Publish("TestMqttClientInflightHandler", []byte("test"), true); err != nil {
-		t.Fatalf("mqttServer.Publish error: %s", err)
-	}
 
-	handler := mqttClientInflightHandler(mqttServer)
+	mqttClient.Disconnect(10)
+	time.Sleep(50 * time.Millisecond)
+
+	evBus.Publish("cluster:message_from", &types.MQTTPublishMessage{
+		Topic:   "TestMqttClientInflightHandler",
+		Payload: []byte("test"),
+		Retain:  true,
+	})
+
+	handler := mqttClientInflightHandler(b)
+
+	time.Sleep(100 * time.Millisecond)
 
 	for _, test := range tests {
 		body, _ := json.Marshal(test.inputRequest)
@@ -225,7 +267,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 				require.Equal(t, test.expectedError, resp["error"])
 			}
 		} else {
-			resp := make(map[uint16]interface{})
+			var resp []*types.MQTTPublishMessage
 			unmarshalBody(res.Body, &resp)
 			require.Equal(t, test.expectedInflight, len(resp))
 		}
@@ -260,15 +302,23 @@ func TestMqttTopicMessagesHandler(t *testing.T) {
 			expectedMessages: 1,
 		},
 	}
+	evBus := bus.New()
+	b, ctxCancel, err := broker.New(&broker.Options{
+		MQTTPort:  1883,
+		Bus:       evBus,
+		AuthUsers: map[string]string{"test": "test"},
+	})
+	require.Nil(t, err)
+	defer b.Shutdown()
+	defer ctxCancel()
 
-	mqttServer := newMqttBroker()
-	defer mqttServer.Close()
+	evBus.Publish("cluster:message_from", &types.MQTTPublishMessage{
+		Topic:   "TestMqttTopicMessagesHandler",
+		Payload: []byte("test"),
+		Retain:  true,
+	})
 
-	if err := mqttServer.Publish("TestMqttTopicMessagesHandler", []byte("test"), true); err != nil {
-		t.Fatalf("mqttServer.Publish error: %s", err)
-	}
-
-	handler := mqttTopicMessagesHandler(mqttServer)
+	handler := mqttTopicMessagesHandler(b)
 
 	for _, test := range tests {
 		body, _ := json.Marshal(test.inputRequest)
@@ -291,7 +341,7 @@ func TestMqttTopicMessagesHandler(t *testing.T) {
 				require.Equal(t, test.expectedError, resp["error"])
 			}
 		} else {
-			resp := make([]interface{}, 5)
+			var resp []*types.MQTTPublishMessage
 			unmarshalBody(res.Body, &resp)
 			require.Equal(t, test.expectedMessages, len(resp))
 		}
@@ -327,10 +377,22 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 		},
 	}
 
-	mqttServer := newMqttBroker()
-	defer mqttServer.Close()
+	evBus := bus.New()
+	b, ctxCancel, err := broker.New(&broker.Options{
+		MQTTPort:  1883,
+		Bus:       evBus,
+		AuthUsers: map[string]string{"test": "test"},
+	})
+	require.Nil(t, err)
+	defer b.Shutdown()
+	defer ctxCancel()
 
-	mqttConnOpts := paho.NewClientOptions().AddBroker("127.0.0.1:1883").SetAutoReconnect(false).SetClientID("TestMqttTopicSubscribersHandler")
+	mqttConnOpts := paho.NewClientOptions().
+		AddBroker("127.0.0.1:1883").
+		SetAutoReconnect(false).
+		SetUsername("test").
+		SetPassword("test").
+		SetClientID("TestMqttTopicSubscribersHandler")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
@@ -341,7 +403,7 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 	}
 	defer mqttClient.Disconnect(1)
 
-	handler := mqttTopicSubscribersHandler(mqttServer)
+	handler := mqttTopicSubscribersHandler(b)
 
 	for _, test := range tests {
 		body, _ := json.Marshal(test.inputRequest)
@@ -364,7 +426,7 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 				require.Equal(t, test.expectedError, resp["error"])
 			}
 		} else {
-			resp := make(map[string]interface{})
+			var resp map[string]byte
 			unmarshalBody(res.Body, &resp)
 			require.Equal(t, test.expectedSubscribers, len(resp))
 		}
@@ -381,17 +443,4 @@ func unmarshalBody(body io.Reader, destination interface{}) interface{} {
 		panic("unable to unmarshal body")
 	}
 	return destination
-}
-
-func newMqttBroker() *mqtt.Server {
-	mqttServer := mqtt.NewServer(nil)
-	if err := mqttServer.AddListener(listeners.NewTCP("tcp", ":1883"), nil); err != nil {
-		panic(fmt.Sprintf("mqttServer.AddListener error: %s", err))
-	}
-	go func() {
-		if err := mqttServer.Serve(); err != nil {
-			panic(fmt.Sprintf("mqttServer.Serve worker died: %s", err))
-		}
-	}()
-	return mqttServer
 }

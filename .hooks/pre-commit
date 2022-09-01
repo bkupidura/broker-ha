@@ -29,10 +29,10 @@ TEST_DIRS=$(find . -type d -not -path '*/.*')
 
 for TEST_DIR in ${TEST_DIRS}
 do
-    pushd ${TEST_DIR}
+    pushd ${TEST_DIR} >> /dev/null
     TEST_NUMBER=$(find . -maxdepth 1 -type f -iname '*_test.go'|wc -l)
     if [ "${TEST_NUMBER}" -gt 0 ]; then
-        go test . 2> /dev/null
+        go test -cover -covermode atomic . 2> /dev/null
         RC=$?
         if [ ${RC} -ne 0 ]; then
             echo "test for ${TEST_DIR} is failing"
@@ -41,7 +41,7 @@ do
     else 
         echo "skipping ${TEST_DIR}, no test found"
     fi
-    popd
+    popd >> /dev/null
 done
 
 if [ "${PASS}" = false ]; then

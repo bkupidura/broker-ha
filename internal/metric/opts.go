@@ -1,13 +1,12 @@
 package metric
 
 import (
-	mqtt "github.com/mochi-co/mqtt/server"
-
+	"brokerha/internal/broker"
 	"brokerha/internal/discovery"
 )
 
 // Options contains configurable options for the metric.
 type Options struct {
-	Broker    *mqtt.Server
+	Broker    *broker.Broker
 	Discovery *discovery.Discovery
 }

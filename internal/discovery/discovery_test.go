@@ -2,7 +2,6 @@ package discovery
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
@@ -14,18 +13,107 @@ import (
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/memberlist"
 	"github.com/stretchr/testify/require"
+
+	"brokerha/internal/bus"
+	"brokerha/internal/types"
 )
+
+func TestNew(t *testing.T) {
+	tests := []struct {
+		mockNetInterfaceAddrs func() ([]net.Addr, error)
+		mockMemberlistCreate  func(*memberlist.Config) (*memberlist.Memberlist, error)
+		expectedErr           error
+		inputOptions          *Options
+		inputBeforeTest       func(*bus.Bus)
+	}{
+		{
+			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
+				return nil, errors.New("netInterfaceAddrs mock error")
+			},
+			expectedErr: errors.New("netInterfaceAddrs mock error"),
+			inputOptions: &Options{
+				Domain:           "test",
+				MemberListConfig: memberlist.DefaultLocalConfig(),
+			},
+		},
+		{
+			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
+				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
+				ip1.IP = net.ParseIP("10.10.10.10")
+				return []net.Addr{ip1}, nil
+			},
+			mockMemberlistCreate: memberlist.Create,
+			inputOptions: &Options{
+				Domain:           "test",
+				MemberListConfig: memberlist.DefaultLocalConfig(),
+			},
+			inputBeforeTest: func(b *bus.Bus) {
+				b.Subscribe("cluster:message_to", "discovery", 0)
+			},
+			expectedErr: errors.New("subscriber discovery already exists"),
+		},
+		{
+			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
+				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
+				ip1.IP = net.ParseIP("10.10.10.10")
+				return []net.Addr{ip1}, nil
+			},
+			mockMemberlistCreate: func(*memberlist.Config) (*memberlist.Memberlist, error) {
+				return nil, errors.New("memberlistCreate mock error")
+			},
+			inputOptions: &Options{
+				Domain:           "test",
+				MemberListConfig: memberlist.DefaultLocalConfig(),
+			},
+			expectedErr: errors.New("memberlistCreate mock error"),
+		},
+		{
+			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
+				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
+				ip1.IP = net.ParseIP("10.10.10.10")
+				return []net.Addr{ip1}, nil
+			},
+			mockMemberlistCreate: memberlist.Create,
+			inputOptions: &Options{
+				Domain:           "test",
+				MemberListConfig: memberlist.DefaultLocalConfig(),
+			},
+		},
+	}
+
+	for _, test := range tests {
+		b := bus.New()
+		if test.inputBeforeTest != nil {
+			test.inputBeforeTest(b)
+		}
+		if test.mockNetInterfaceAddrs != nil {
+			netInterfaceAddrs = test.mockNetInterfaceAddrs
+		}
+		if test.mockMemberlistCreate != nil {
+			memberlistCreate = test.mockMemberlistCreate
+		}
+		test.inputOptions.Bus = b
+		output, cancelFunc, err := New(test.inputOptions)
+
+		require.Equal(t, test.expectedErr, err)
+		if err != nil {
+			continue
+		}
+
+		output.Shutdown()
+		cancelFunc()
+	}
+}
 
 func TestShutdown(t *testing.T) {
 	mlConfig := memberlist.DefaultLocalConfig()
-	mlConfig.Name = "node1"
+	mlConfig.Name = "node2"
 	mlConfig.BindAddr = "127.0.0.1"
 	mlConfig.LogOutput = ioutil.Discard
 	ml, err := memberlist.Create(mlConfig)
 	if err != nil {
 		t.Fatalf("memberlist.Create error: %s", err)
 	}
-
 	disco := &Discovery{
 		domain: "test",
 		selfAddress: map[string]struct{}{
@@ -34,26 +122,18 @@ func TestShutdown(t *testing.T) {
 		config: mlConfig,
 		ml:     ml,
 	}
-	defer disco.Shutdown()
-
-	err = disco.FormCluster(1, 2)
-	if err != nil {
-		t.Fatalf("disco.FormCluster() error: %s", err)
-	}
-
 	require.Nil(t, disco.Shutdown())
 }
 
 func TestLeave(t *testing.T) {
 	mlConfig := memberlist.DefaultLocalConfig()
-	mlConfig.Name = "node1"
+	mlConfig.Name = "node2"
 	mlConfig.BindAddr = "127.0.0.1"
 	mlConfig.LogOutput = ioutil.Discard
 	ml, err := memberlist.Create(mlConfig)
 	if err != nil {
 		t.Fatalf("memberlist.Create error: %s", err)
 	}
-
 	disco := &Discovery{
 		domain: "test",
 		selfAddress: map[string]struct{}{
@@ -62,13 +142,7 @@ func TestLeave(t *testing.T) {
 		config: mlConfig,
 		ml:     ml,
 	}
-	defer disco.Shutdown()
-
-	err = disco.FormCluster(1, 2)
-	if err != nil {
-		t.Fatalf("disco.FormCluster() error: %s", err)
-	}
-
+	defer ml.Shutdown()
 	require.Nil(t, disco.Leave(100))
 }
 
@@ -102,13 +176,15 @@ func TestJoin(t *testing.T) {
 		config: mlConfig,
 		ml:     ml,
 	}
-	defer disco.Shutdown()
+	defer ml.Shutdown()
 
-	_, err = disco.Join([]string{"127.0.0.1:7948"})
+	joinedMembers, err := disco.Join([]string{"127.0.0.1:7948"})
 	require.Equal(t, "1 error occurred:\n\t* Failed to join 127.0.0.1:7948: dial tcp 127.0.0.1:7948: connect: connection refused\n\n", err.Error())
+	require.Equal(t, 0, joinedMembers)
 
-	_, err = disco.Join([]string{"127.0.0.1:7947"})
+	joinedMembers, err = disco.Join([]string{"127.0.0.1:7947"})
 	require.Nil(t, err)
+	require.Equal(t, 1, joinedMembers)
 }
 
 func TestGetHealthScore(t *testing.T) {
@@ -130,10 +206,6 @@ func TestGetHealthScore(t *testing.T) {
 		config: mlConfig,
 		ml:     ml,
 	}
-	err = disco.FormCluster(1, 2)
-	if err != nil {
-		t.Fatalf("disco.FormCluster() error: %s", err)
-	}
 
 	require.Equal(t, 0, disco.GetHealthScore())
 }
@@ -147,30 +219,42 @@ func TestSendReliable(t *testing.T) {
 		expectedData  string
 	}{
 		{
-			inputMember:   &memberlist.Node{Addr: net.ParseIP("127.0.0.1"), Port: 7946},
+			inputMember:   &memberlist.Node{Addr: net.ParseIP("127.0.0.1"), Port: 7947},
 			inputDataType: "unknown",
 			inputData:     []byte{},
 			expectedErr:   "unknown data type unknown",
 		},
 		{
-			inputMember:   &memberlist.Node{Addr: net.ParseIP("127.0.0.1"), Port: 7947},
+			inputMember:   &memberlist.Node{Addr: net.ParseIP("127.0.0.1"), Port: 7948},
 			inputDataType: "MQTTPublish",
 			inputData:     []byte("message"),
-			expectedErr:   "dial tcp 127.0.0.1:7947: connect: connection refused",
+			expectedErr:   "dial tcp 127.0.0.1:7948: connect: connection refused",
 		},
 		{
-			inputMember:   &memberlist.Node{Addr: net.ParseIP("127.0.0.1"), Port: 7946},
+			inputMember:   &memberlist.Node{Addr: net.ParseIP("127.0.0.1"), Port: 7947},
 			inputDataType: "MQTTPublish",
 			inputData:     []byte("message"),
 			expectedData:  string(append([]byte{1}, []byte(`message`)...)),
 		},
 	}
 	md := &mockDelegate{}
+	c1 := memberlist.DefaultLocalConfig()
+	c1.BindAddr = "127.0.0.1"
+	c1.BindPort = 7947
+	c1.AdvertisePort = 7947
+	c1.Name = "node1"
+	c1.LogOutput = ioutil.Discard
+	c1.Delegate = md
+	m1, err := memberlist.Create(c1)
+	if err != nil {
+		t.Fatalf("memberlist.Create error: %s", err)
+	}
+	defer m1.Shutdown()
+
 	mlConfig := memberlist.DefaultLocalConfig()
-	mlConfig.Name = "node1"
+	mlConfig.Name = "node2"
 	mlConfig.BindAddr = "127.0.0.1"
 	mlConfig.LogOutput = ioutil.Discard
-	mlConfig.Delegate = md
 	ml, err := memberlist.Create(mlConfig)
 	if err != nil {
 		t.Fatalf("memberlist.Create error: %s", err)
@@ -185,10 +269,10 @@ func TestSendReliable(t *testing.T) {
 		config: mlConfig,
 		ml:     ml,
 	}
-	err = disco.FormCluster(1, 2)
-	if err != nil {
-		t.Fatalf("disco.FormCluster() error: %s", err)
-	}
+
+	joinedMembers, err := disco.Join([]string{"127.0.0.1:7947"})
+	require.Nil(t, err)
+	require.Equal(t, 1, joinedMembers)
 
 	for _, test := range tests {
 		err = disco.SendReliable(test.inputMember, test.inputDataType, test.inputData)
@@ -215,17 +299,6 @@ func TestMembers(t *testing.T) {
 	}
 	defer m1.Shutdown()
 
-	netLookupSRV = func(string, string, string) (string, []*net.SRV, error) {
-		a := []*net.SRV{
-			{Target: "127-0-0-1.some-service.svc.cluster.local", Port: 7947},
-		}
-		return "", a, nil
-	}
-	netLookupIP = func(domain string) ([]net.IP, error) {
-		a := []net.IP{net.ParseIP("127.0.0.1")}
-		return a, nil
-	}
-
 	mlConfig := memberlist.DefaultLocalConfig()
 	mlConfig.Name = "node2"
 	mlConfig.BindAddr = "127.0.0.1"
@@ -244,10 +317,10 @@ func TestMembers(t *testing.T) {
 		config: mlConfig,
 		ml:     ml,
 	}
-	err = disco.FormCluster(1, 2)
-	if err != nil {
-		t.Fatalf("disco.FormCluster() error: %s", err)
-	}
+
+	joinedMembers, err := disco.Join([]string{"127.0.0.1:7947"})
+	require.Nil(t, err)
+	require.Equal(t, 1, joinedMembers)
 
 	require.Equal(t, 2, len(disco.Members(true)))
 	require.Equal(t, 1, len(disco.Members(false)))
@@ -407,95 +480,14 @@ func TestFormCluster(t *testing.T) {
 	}
 }
 
-func TestNew(t *testing.T) {
-	tests := []struct {
-		mockNetInterfaceAddrs func() ([]net.Addr, error)
-		mockMemberlistCreate  func(*memberlist.Config) (*memberlist.Memberlist, error)
-		expectedErr           error
-		expectedLog           string
-		inputMemberlistConfig func() *memberlist.Config
-	}{
-		{
-			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
-				return nil, errors.New("netInterfaceAddrs mock error")
-			},
-			expectedErr:           errors.New("netInterfaceAddrs mock error"),
-			inputMemberlistConfig: memberlist.DefaultLocalConfig,
-		},
-		{
-			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
-				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
-				ip1.IP = net.ParseIP("10.10.10.10")
-				return []net.Addr{ip1}, nil
-			},
-			mockMemberlistCreate: func(*memberlist.Config) (*memberlist.Memberlist, error) {
-				return nil, errors.New("memberlistCreate mock error")
-			},
-			expectedErr:           errors.New("memberlistCreate mock error"),
-			inputMemberlistConfig: memberlist.DefaultLocalConfig,
-		},
-		{
-			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
-				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
-				ip1.IP = net.ParseIP("10.10.10.10")
-				return []net.Addr{ip1}, nil
-			},
-			mockMemberlistCreate: memberlist.Create,
-			inputMemberlistConfig: func() *memberlist.Config {
-				mockNetwork := &memberlist.MockNetwork{}
-				mlConfig := memberlist.DefaultLocalConfig()
-				mlConfig.Transport = mockNetwork.NewTransport("test")
-				return mlConfig
-			},
-			expectedLog: "new cluster member 127.0.0.1:1\nsending retained messages to 127.0.0.1:1\nstarting MQTTPublishToCluster queue worker\n",
-		},
-	}
-
-	log.SetFlags(0)
-	var logOutput bytes.Buffer
-	log.SetOutput(&logOutput)
-
-	for _, test := range tests {
-		logOutput.Reset()
-		if test.mockNetInterfaceAddrs != nil {
-			netInterfaceAddrs = test.mockNetInterfaceAddrs
-		}
-		if test.mockMemberlistCreate != nil {
-			memberlistCreate = test.mockMemberlistCreate
-		}
-		output, cancelFunc, err := New(&Options{
-			Domain:           "test",
-			MemberListConfig: test.inputMemberlistConfig(),
-		})
-		require.Equal(t, test.expectedErr, err)
-		if err != nil {
-			continue
-		}
-		defer cancelFunc()
-		time.Sleep(50 * time.Millisecond)
-
-		require.Equal(t, "test", output.domain)
-		require.Equal(t, map[string]struct{}{
-			"10.10.10.10:7946": {},
-		}, output.selfAddress)
-		require.Equal(t, &delegate{}, output.config.Delegate)
-		require.Equal(t, &delegateEvent{
-			map[string]struct{}{
-				"10.10.10.10:7946": {},
-			},
-		}, output.config.Events)
-		require.Equal(t, test.expectedLog, logOutput.String())
-	}
-}
-
 func TestPopulatePublishBatch(t *testing.T) {
 	tests := []struct {
-		inputMessage    *MQTTPublishMessage
-		expectedMessage map[string][]*MQTTPublishMessage
+		inputMessage    *types.DiscoveryPublishMessage
+		expectedMessage map[string][]*types.DiscoveryPublishMessage
 	}{
 		{
-			inputMessage: &MQTTPublishMessage{},
-			expectedMessage: map[string][]*MQTTPublishMessage{
+			inputMessage: &types.DiscoveryPublishMessage{},
+			expectedMessage: map[string][]*types.DiscoveryPublishMessage{
 				"all": {
 					{
 						Node: []string{"all"},
@@ -504,8 +496,8 @@ func TestPopulatePublishBatch(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: &MQTTPublishMessage{Node: []string{"127.0.0.1:7946"}},
-			expectedMessage: map[string][]*MQTTPublishMessage{
+			inputMessage: &types.DiscoveryPublishMessage{Node: []string{"127.0.0.1:7946"}},
+			expectedMessage: map[string][]*types.DiscoveryPublishMessage{
 				"127.0.0.1:7946": {
 					{
 						Node: []string{"127.0.0.1:7946"},
@@ -514,8 +506,8 @@ func TestPopulatePublishBatch(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: &MQTTPublishMessage{Node: []string{"127.0.0.1:7946", "2.2.2.2:7946"}},
-			expectedMessage: map[string][]*MQTTPublishMessage{
+			inputMessage: &types.DiscoveryPublishMessage{Node: []string{"127.0.0.1:7946", "2.2.2.2:7946"}},
+			expectedMessage: map[string][]*types.DiscoveryPublishMessage{
 				"127.0.0.1:7946": {
 					{
 						Node: []string{"127.0.0.1:7946", "2.2.2.2:7946"},
@@ -530,25 +522,25 @@ func TestPopulatePublishBatch(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		mqttPublishBatch := map[string][]*MQTTPublishMessage{}
+		mqttPublishBatch := map[string][]*types.DiscoveryPublishMessage{}
 		populatePublishBatch(mqttPublishBatch, test.inputMessage)
 		require.Equal(t, test.expectedMessage, mqttPublishBatch)
 	}
 }
 
-func TestHandleMQTTPublishToCluster(t *testing.T) {
+func TestPublishToCluster(t *testing.T) {
 	tests := []struct {
-		inputMessage       []*MQTTPublishMessage
+		inputMessage       []*types.DiscoveryPublishMessage
 		jsonMarshal        func(any) ([]byte, error)
 		queueDataTypesFunc func()
 		expectedData       string
 		expectedLog        string
 	}{
 		{
-			inputMessage: []*MQTTPublishMessage{
+			inputMessage: []*types.DiscoveryPublishMessage{
 				{Node: []string{"127.0.0.1:7946"}},
 			},
-			expectedLog: "starting MQTTPublishToCluster queue worker\nunable to marshal to cluster message 127.0.0.1:7946: mockJsonMarshal error\n",
+			expectedLog: "unable to marshal to cluster message 127.0.0.1:7946: mockJsonMarshal error\n",
 			jsonMarshal: func(any) ([]byte, error) {
 				return nil, errors.New("mockJsonMarshal error")
 			},
@@ -557,20 +549,20 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*MQTTPublishMessage{
+			inputMessage: []*types.DiscoveryPublishMessage{
 				{Node: []string{"127.0.0.1:7946"}},
 			},
-			expectedLog: "starting MQTTPublishToCluster queue worker\nunable to publish message to cluster member 127.0.0.1:7946 (retries 1/3): unknown data type MQTTPublish\nunable to publish message to cluster member 127.0.0.1:7946 (retries 2/3): unknown data type MQTTPublish\nunable to publish message to cluster member 127.0.0.1:7946 (retries 3/3): unknown data type MQTTPublish\n",
+			expectedLog: "unable to publish message to cluster member 127.0.0.1:7946 (retries 1/3): unknown data type MQTTPublish\nunable to publish message to cluster member 127.0.0.1:7946 (retries 2/3): unknown data type MQTTPublish\nunable to publish message to cluster member 127.0.0.1:7946 (retries 3/3): unknown data type MQTTPublish\n",
 			jsonMarshal: json.Marshal,
 			queueDataTypesFunc: func() {
 				queueDataTypes = map[string]byte{}
 			},
 		},
 		{
-			inputMessage: []*MQTTPublishMessage{
+			inputMessage: []*types.DiscoveryPublishMessage{
 				{Node: []string{"127.0.0.1:7946"}},
 			},
-			expectedLog:  "starting MQTTPublishToCluster queue worker\nunable to publish message to cluster member 127.0.0.1:7946 (retries 1/3): unknown data type MQTTPublish\n",
+			expectedLog:  "unable to publish message to cluster member 127.0.0.1:7946 (retries 1/3): unknown data type MQTTPublish\n",
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
 			jsonMarshal:  json.Marshal,
 			queueDataTypesFunc: func() {
@@ -580,10 +572,9 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*MQTTPublishMessage{
+			inputMessage: []*types.DiscoveryPublishMessage{
 				{Node: []string{"127.0.0.1:7946"}},
 			},
-			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
 			jsonMarshal:  json.Marshal,
 			queueDataTypesFunc: func() {
@@ -591,10 +582,9 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*MQTTPublishMessage{
+			inputMessage: []*types.DiscoveryPublishMessage{
 				{Node: []string{}},
 			},
-			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
 			jsonMarshal:  json.Marshal,
 			queueDataTypesFunc: func() {
@@ -602,11 +592,10 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*MQTTPublishMessage{
+			inputMessage: []*types.DiscoveryPublishMessage{
 				{},
 				{Node: []string{}},
 			},
-			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
 			jsonMarshal:  json.Marshal,
 			queueDataTypesFunc: func() {
@@ -614,12 +603,11 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*MQTTPublishMessage{
+			inputMessage: []*types.DiscoveryPublishMessage{
 				{Node: []string{"127.0.0.1:7946"}},
 				{Node: []string{"127.0.0.1:7947"}},
 				{},
 			},
-			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
 			jsonMarshal:  json.Marshal,
 			queueDataTypesFunc: func() {
@@ -627,13 +615,12 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*MQTTPublishMessage{
+			inputMessage: []*types.DiscoveryPublishMessage{
 				{Node: []string{"127.0.0.1:7946"}},
 				{},
 				{Node: []string{"127.0.0.1:7946"}},
 				{},
 			},
-			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
 			jsonMarshal:  json.Marshal,
 			queueDataTypesFunc: func() {
@@ -641,13 +628,12 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*MQTTPublishMessage{
+			inputMessage: []*types.DiscoveryPublishMessage{
 				{Node: []string{"127.0.0.1:7946"}},
 				{Node: []string{"127.0.0.1:7947"}},
 				{Node: []string{"127.0.0.1:7946"}},
 				{Node: []string{"127.0.0.1:7947"}},
 			},
-			expectedLog:  "starting MQTTPublishToCluster queue worker\n",
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
 			jsonMarshal:  json.Marshal,
 			queueDataTypesFunc: func() {
@@ -689,37 +675,30 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 	c3.Name = "node3"
 	c3.BindAddr = "127.0.0.1"
 	c3.LogOutput = ioutil.Discard
-	m3, err := memberlist.Create(c3)
-	if err != nil {
-		t.Fatalf("memberlist.Create error: %s", err)
-	}
-	defer m3.Shutdown()
 
-	disco := &Discovery{
-		ml: m3,
-		selfAddress: map[string]struct{}{
-			"127.0.0.1:7948": {},
-		},
-		config: c3,
-		domain: "test",
-	}
+	evBus := bus.New()
 
-	if _, err := m3.Join([]string{"127.0.0.1:7946", "127.0.0.1:7947"}); err != nil {
-		t.Fatalf("memberlist.Join error: %s", err)
-	}
+	disco, ctxCancel, err := New(&Options{
+		MemberListConfig: c3,
+		Bus:              evBus,
+		Domain:           "test",
+	})
+	require.Nil(t, err)
+	defer disco.Shutdown()
+	defer ctxCancel()
+
+	joinedMembers, err := disco.Join([]string{"127.0.0.1:7947", "127.0.0.1:7946"})
+	require.Nil(t, err)
+	require.Equal(t, 2, joinedMembers)
 
 	for _, test := range tests {
 		logOutput.Reset()
 
-		ctx, ctxCancel := context.WithCancel(context.Background())
-
 		jsonMarshal = test.jsonMarshal
 		go test.queueDataTypesFunc()
 
-		go handleMQTTPublishToCluster(ctx, disco)
-
 		for _, m := range test.inputMessage {
-			MQTTPublishToCluster <- m
+			evBus.Publish("cluster:message_to", m)
 		}
 
 		time.Sleep(100 * time.Millisecond)
@@ -730,11 +709,9 @@ func TestHandleMQTTPublishToCluster(t *testing.T) {
 		}
 
 		logOutput.Reset()
-		ctxCancel()
-		time.Sleep(100 * time.Millisecond)
-
-		require.Equal(t, "MQTTPublishToCluster queue worker done\n", logOutput.String())
+		time.Sleep(10 * time.Millisecond)
 	}
+
 }
 
 func TestGetLocalIPs(t *testing.T) {

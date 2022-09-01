@@ -5,8 +5,8 @@ import (
 	"net/http"
 
 	"github.com/go-chi/render"
-	mqtt "github.com/mochi-co/mqtt/server"
 
+	"brokerha/internal/broker"
 	"brokerha/internal/discovery"
 )
 
@@ -36,19 +36,30 @@ func invalidRequestError(err error) render.Renderer {
 	}
 }
 
+// unableToPerformError returns 500 http error in case we are not able to
+// perform request.
+func unableToPerformError(err error) render.Renderer {
+	return &errResponse{
+		Err:            err,
+		HTTPStatusCode: http.StatusInternalServerError,
+		StatusText:     "Unable to perform request.",
+		ErrorText:      err.Error(),
+	}
+}
+
 // discoveryMembersHandler returns all discovery (memberlist) members.
 // wget -O - -S -q http://localhost:8080/api/discovery/members
-func discoveryMembersHandler(disco *discovery.Discovery) func(http.ResponseWriter, *http.Request) {
+func discoveryMembersHandler(d *discovery.Discovery) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		render.JSON(w, r, disco.Members(true))
+		render.JSON(w, r, d.Members(true))
 	}
 }
 
 // mqttClientsHandler returns all mqtt clients.
 // wget -O - -S -q http://localhost:8080/api/mqtt/clients
-func mqttClientsHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
+func mqttClientsHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		render.JSON(w, r, mqttServer.Clients.GetAll())
+		render.JSON(w, r, b.Clients())
 	}
 }
 
@@ -69,19 +80,16 @@ func (req *mqttClientIDRequest) Bind(r *http.Request) error {
 // wget -O - -S -q http://localhost:8080/api/mqtt/client/stop \
 // --post-data '{"client_id": "cc16d0v002aeifmbddo0"}' --header 'Content-Type: application/json'
 // mqttClientIDRequest should be passed.
-func mqttClientStopHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
+func mqttClientStopHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := &mqttClientIDRequest{}
 		if err := render.Bind(r, request); err != nil {
 			render.Render(w, r, invalidRequestError(err))
 			return
 		}
-		client, ok := mqttServer.Clients.Get(request.ClientID)
-		if !ok {
-			render.Render(w, r, invalidRequestError(errors.New("unknown client")))
-			return
+		if err := b.StopClient(request.ClientID, "stopped by API"); err != nil {
+			render.Render(w, r, unableToPerformError(err))
 		}
-		client.Stop(errors.New("stopped by API"))
 	}
 }
 
@@ -89,19 +97,19 @@ func mqttClientStopHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *h
 // wget -O - -S -q http://localhost:8080/api/mqtt/client/inflight \
 // --post-data '{"client_id": "cc16d0v002aeifmbddo0"}' --header 'Content-Type: application/json'
 // mqttClientIDRequest should be passed.
-func mqttClientInflightHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
+func mqttClientInflightHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := &mqttClientIDRequest{}
 		if err := render.Bind(r, request); err != nil {
 			render.Render(w, r, invalidRequestError(err))
 			return
 		}
-		client, ok := mqttServer.Clients.Get(request.ClientID)
-		if !ok {
-			render.Render(w, r, invalidRequestError(errors.New("unknown client")))
+		messages, err := b.Inflights(request.ClientID)
+		if err != nil {
+			render.Render(w, r, unableToPerformError(err))
 			return
 		}
-		render.JSON(w, r, client.Inflight.GetAll())
+		render.JSON(w, r, messages)
 	}
 }
 
@@ -122,14 +130,14 @@ func (req *mqttTopicNameRequest) Bind(r *http.Request) error {
 // wget -O - -S -q http://localhost:8080/api/mqtt/topic/messages \
 // --post-data '{"topic": "#"}' --header 'Content-Type: application/json'
 // mqttTopicNameRequest should be passed.
-func mqttTopicMessagesHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
+func mqttTopicMessagesHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := &mqttTopicNameRequest{}
 		if err := render.Bind(r, request); err != nil {
 			render.Render(w, r, invalidRequestError(err))
 			return
 		}
-		render.JSON(w, r, mqttServer.Topics.Messages(request.Topic))
+		render.JSON(w, r, b.Messages(request.Topic))
 	}
 }
 
@@ -137,13 +145,13 @@ func mqttTopicMessagesHandler(mqttServer *mqtt.Server) func(http.ResponseWriter,
 // wget -O - -S -q http://localhost:8080/api/mqtt/topic/subscribers \
 // --post-data '{"topic": "topic"}' --header 'Content-Type: application/json'
 // mqttTopicNameRequest should be passed.
-func mqttTopicSubscribersHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
+func mqttTopicSubscribersHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := &mqttTopicNameRequest{}
 		if err := render.Bind(r, request); err != nil {
 			render.Render(w, r, invalidRequestError(err))
 			return
 		}
-		render.JSON(w, r, mqttServer.Topics.Subscribers(request.Topic))
+		render.JSON(w, r, b.Subscribers(request.Topic))
 	}
 }

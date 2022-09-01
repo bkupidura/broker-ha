@@ -1,14 +1,13 @@
 package api
 
 import (
-	mqtt "github.com/mochi-co/mqtt/server"
-
+	"brokerha/internal/broker"
 	"brokerha/internal/discovery"
 )
 
 // Options contains configurable options for the API.
 type Options struct {
-	Broker                 *mqtt.Server
+	Broker                 *broker.Broker
 	Discovery              *discovery.Discovery
 	ClusterExpectedMembers int
 	AuthUsers              map[string]string
