@@ -1,10 +1,14 @@
 package api
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/memberlist"
 	"github.com/stretchr/testify/require"
@@ -16,11 +20,12 @@ import (
 
 func TestNewRouter(t *testing.T) {
 	tests := []struct {
-		inputMethod  string
-		inputPath    string
-		inputAuth    [2]string
-		expectedCode int
-		auth         map[string]string
+		inputMethod        string
+		inputPath          string
+		inputAuth          [2]string
+		inputctxCancelFunc func(func())
+		expectedCode       int
+		auth               map[string]string
 	}{
 		{
 			inputMethod:  http.MethodGet,
@@ -54,6 +59,29 @@ func TestNewRouter(t *testing.T) {
 			inputPath:    "/metrics",
 			expectedCode: http.StatusOK,
 			auth:         map[string]string{"test": "test"},
+		},
+		{
+			inputMethod:  http.MethodPost,
+			inputPath:    "/api/sse",
+			expectedCode: http.StatusOK,
+			inputctxCancelFunc: func(ctxCancel func()) {
+				go func() {
+					time.Sleep(10 * time.Millisecond)
+					ctxCancel()
+				}()
+			},
+		},
+		{
+			inputMethod:  http.MethodPost,
+			inputPath:    "/api/sse",
+			expectedCode: http.StatusUnauthorized,
+			auth:         map[string]string{"test": "test"},
+			inputctxCancelFunc: func(ctxCancel func()) {
+				go func() {
+					time.Sleep(10 * time.Millisecond)
+					ctxCancel()
+				}()
+			},
 		},
 		{
 			inputMethod:  http.MethodGet,
@@ -172,25 +200,40 @@ func TestNewRouter(t *testing.T) {
 	mlConfig.LogOutput = ioutil.Discard
 
 	evBus := bus.New()
-	disco, ctxCancel, err := discovery.New(&discovery.Options{
+	disco, discoCtxCancel, err := discovery.New(&discovery.Options{
 		Domain:           "test",
 		MemberListConfig: mlConfig,
 		Bus:              evBus,
 	})
 	require.Nil(t, err)
-	defer ctxCancel()
+	defer discoCtxCancel()
 	defer disco.Shutdown()
 
-	b, ctxCancel, err := broker.New(&broker.Options{
+	b, brokerCtxCancel, err := broker.New(&broker.Options{
 		MQTTPort: 1883,
 		Bus:      evBus,
 	})
-	defer ctxCancel()
+	defer brokerCtxCancel()
 	defer b.Shutdown()
 	require.Nil(t, err)
 
 	for _, test := range tests {
-		req := httptest.NewRequest(test.inputMethod, test.inputPath, nil)
+		var req *http.Request
+		var err error
+
+		body, _ := json.Marshal(map[string]interface{}{})
+
+		if test.inputctxCancelFunc != nil {
+			ctx, reqCtxCancel := context.WithCancel(context.Background())
+			req, err = http.NewRequestWithContext(ctx, test.inputMethod, test.inputPath, bytes.NewReader(body))
+			require.Nil(t, err)
+
+			test.inputctxCancelFunc(reqCtxCancel)
+		} else {
+			req, err = http.NewRequest(test.inputMethod, test.inputPath, bytes.NewReader(body))
+			require.Nil(t, err)
+		}
+
 		req.Header.Set("Content-Type", "application/json")
 		if len(test.inputAuth) > 0 {
 			req.SetBasicAuth(test.inputAuth[0], test.inputAuth[1])
@@ -202,6 +245,7 @@ func TestNewRouter(t *testing.T) {
 			Broker:                 b,
 			ClusterExpectedMembers: 1,
 			AuthUsers:              test.auth,
+			Bus:                    evBus,
 		})
 
 		router.ServeHTTP(w, req)

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"io/ioutil"
@@ -19,6 +20,245 @@ import (
 	"brokerha/internal/discovery"
 	"brokerha/internal/types"
 )
+
+func TestSseHandler(t *testing.T) {
+	tests := []struct {
+		inputBusFunc          func() *bus.Bus
+		inputCancelTimeout    int
+		inputPublishFunc      func(*bus.Bus)
+		inputResponseRecorder ResponseWriter
+		inputRequest          map[string]interface{}
+		expectedError         string
+		expectedCode          int
+		expectedBody          []string
+	}{
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout:    10,
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest: map[string]interface{}{
+				"filters": []string{"unknown"},
+			},
+			expectedCode:  http.StatusBadRequest,
+			expectedError: "filter not in allowed list [cluster:message_from cluster:message_to cluster:new_member]",
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout: 50,
+			inputPublishFunc: func(b *bus.Bus) {
+				time.Sleep(10 * time.Millisecond)
+				err := b.Publish("cluster:message_from", "message_from")
+				require.Nil(t, err)
+				b.Publish("cluster:message_to", "message_to")
+				b.Publish("cluster:new_member", "new_member")
+			},
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest: map[string]interface{}{
+				"filters": []string{"cluster:message_from"},
+			},
+			expectedCode: http.StatusOK,
+			expectedBody: []string{
+				"event: cluster:message_from\ndata: \"message_from\"\n",
+			},
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout: 50,
+			inputPublishFunc: func(b *bus.Bus) {
+				time.Sleep(10 * time.Millisecond)
+				b.Publish("cluster:message_from", "message_from")
+				err := b.Publish("cluster:message_to", "message_to")
+				require.Nil(t, err)
+				b.Publish("cluster:new_member", "new_member")
+			},
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest: map[string]interface{}{
+				"filters": []string{"cluster:message_to"},
+			},
+			expectedCode: http.StatusOK,
+			expectedBody: []string{
+				"event: cluster:message_to\ndata: \"message_to\"\n",
+			},
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout: 50,
+			inputPublishFunc: func(b *bus.Bus) {
+				time.Sleep(10 * time.Millisecond)
+				b.Publish("cluster:message_from", "message_from")
+				b.Publish("cluster:message_to", "message_to")
+				err := b.Publish("cluster:new_member", "new_member")
+				require.Nil(t, err)
+			},
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest: map[string]interface{}{
+				"filters": []string{"cluster:new_member"},
+			},
+			expectedCode: http.StatusOK,
+			expectedBody: []string{
+				"event: cluster:new_member\ndata: \"new_member\"\n",
+			},
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout: 50,
+			inputPublishFunc: func(b *bus.Bus) {
+				time.Sleep(10 * time.Millisecond)
+				err := b.Publish("cluster:message_from", "message_from")
+				require.Nil(t, err)
+				err = b.Publish("cluster:message_to", "message_to")
+				require.Nil(t, err)
+				err = b.Publish("cluster:new_member", "new_member")
+				require.Nil(t, err)
+			},
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest:          map[string]interface{}{},
+			expectedCode:          http.StatusOK,
+			expectedBody: []string{
+				"event: cluster:message_from\ndata: \"message_from\"\n",
+				"event: cluster:message_to\ndata: \"message_to\"\n",
+				"event: cluster:new_member\ndata: \"new_member\"\n",
+			},
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout:    3100,
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest:          map[string]interface{}{},
+			expectedCode:          http.StatusOK,
+			expectedBody: []string{
+				"event: sse:keepalive\ndata: \"keepalive\"\n",
+			},
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				_, err := b.Subscribe("cluster:message_from", "1.2.3.4:60000", 1024)
+				require.Nil(t, err)
+				return b
+			},
+			inputCancelTimeout:    10,
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest:          map[string]interface{}{},
+			expectedCode:          http.StatusInternalServerError,
+			expectedError:         "subscriber 1.2.3.4:60000 already exists",
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				_, err := b.Subscribe("cluster:message_to", "1.2.3.4:60000", 1024)
+				require.Nil(t, err)
+				return b
+			},
+			inputCancelTimeout:    10,
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest:          map[string]interface{}{},
+			expectedCode:          http.StatusInternalServerError,
+			expectedError:         "subscriber 1.2.3.4:60000 already exists",
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				_, err := b.Subscribe("cluster:new_member", "1.2.3.4:60000", 1024)
+				require.Nil(t, err)
+				return b
+			},
+			inputCancelTimeout:    10,
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest:          map[string]interface{}{},
+			expectedCode:          http.StatusInternalServerError,
+			expectedError:         "subscriber 1.2.3.4:60000 already exists",
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputPublishFunc: func(b *bus.Bus) {
+				time.Sleep(5 * time.Millisecond)
+				err := b.Publish("cluster:new_member", make(chan int))
+				require.Nil(t, err)
+			},
+			inputCancelTimeout:    50,
+			inputResponseRecorder: NewResponseWriter(true),
+			expectedCode:          http.StatusOK,
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout:    50,
+			inputResponseRecorder: NewResponseWriter(false),
+			inputRequest:          map[string]interface{}{},
+			expectedCode:          http.StatusInternalServerError,
+			expectedError:         "streaming not supported",
+		},
+	}
+	sseKeepalive = 3
+
+	for _, test := range tests {
+		evBus := test.inputBusFunc()
+		handler := sseHandler(evBus)
+
+		body, _ := json.Marshal(test.inputRequest)
+
+		ctx, reqCtxCancel := context.WithCancel(context.Background())
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "/api/sse", bytes.NewReader(body))
+		require.Nil(t, err)
+
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "1.2.3.4:60000"
+
+		w := test.inputResponseRecorder
+
+		go func() {
+			time.Sleep(time.Duration(test.inputCancelTimeout) * time.Millisecond)
+			reqCtxCancel()
+		}()
+		if test.inputPublishFunc != nil {
+			go test.inputPublishFunc(evBus)
+		}
+		handler(w, req)
+
+		require.Equal(t, test.expectedCode, w.Code())
+
+		res := w.Result()
+		defer res.Body.Close()
+
+		if w.Code() != http.StatusOK {
+			resp := make(map[string]string)
+			unmarshalBody(res.Body, &resp)
+
+			if test.expectedError != "" {
+				require.Equal(t, test.expectedError, resp["error"])
+			}
+		}
+		b, err := io.ReadAll(res.Body)
+		require.Nil(t, err)
+		for _, expectedBody := range test.expectedBody {
+			require.Contains(t, string(b), expectedBody)
+		}
+	}
+}
 
 func TestDiscoveryMembersHandler(t *testing.T) {
 	mlConfig := memberlist.DefaultLocalConfig()
@@ -443,4 +683,77 @@ func unmarshalBody(body io.Reader, destination interface{}) interface{} {
 		panic("unable to unmarshal body")
 	}
 	return destination
+}
+
+type ResponseWriter interface {
+	http.ResponseWriter
+	Code() int
+	Result() *http.Response
+}
+
+func NewResponseWriter(asFlusher bool) ResponseWriter {
+	if asFlusher {
+		return &testResponseRecorderFlusher{Recorder: httptest.NewRecorder()}
+	}
+	return &testResponseRecorderWithoutFlush{Recorder: httptest.NewRecorder()}
+}
+
+type testResponseRecorderWithoutFlush struct {
+	Recorder *httptest.ResponseRecorder
+}
+
+func (w *testResponseRecorderWithoutFlush) Code() int {
+	return w.Recorder.Code
+}
+
+func (w *testResponseRecorderWithoutFlush) Result() *http.Response {
+	return w.Recorder.Result()
+}
+
+func (w *testResponseRecorderWithoutFlush) Header() http.Header {
+	return w.Recorder.Header()
+}
+
+func (w *testResponseRecorderWithoutFlush) WriteHeader(status int) {
+	w.Recorder.WriteHeader(status)
+}
+
+func (w *testResponseRecorderWithoutFlush) Write(b []byte) (int, error) {
+	return w.Recorder.Write(b)
+}
+
+func (w *testResponseRecorderWithoutFlush) ReadFrom(r io.Reader) (n int64, err error) {
+	return io.Copy(w.Recorder, r)
+}
+
+type testResponseRecorderFlusher struct {
+	Recorder *httptest.ResponseRecorder
+}
+
+func (w *testResponseRecorderFlusher) Code() int {
+	return w.Recorder.Code
+}
+
+func (w *testResponseRecorderFlusher) Result() *http.Response {
+	return w.Recorder.Result()
+}
+
+func (w *testResponseRecorderFlusher) Header() http.Header {
+	return w.Recorder.Header()
+}
+
+func (w *testResponseRecorderFlusher) WriteHeader(status int) {
+	w.Recorder.WriteHeader(status)
+}
+
+func (w *testResponseRecorderFlusher) Write(b []byte) (int, error) {
+	return w.Recorder.Write(b)
+}
+
+func (w *testResponseRecorderFlusher) ReadFrom(r io.Reader) (n int64, err error) {
+	return io.Copy(w.Recorder, r)
+}
+
+func (w *testResponseRecorderFlusher) Flush() {
+	w.Recorder.Flush()
 }

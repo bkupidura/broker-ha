@@ -74,6 +74,7 @@ func main() {
 	httpRouter := api.NewRouter(&api.Options{
 		Discovery:              d,
 		Broker:                 b,
+		Bus:                    evBus,
 		ClusterExpectedMembers: config.GetInt("cluster.expected_members"),
 		AuthUsers:              config.GetStringMapString("api.user"),
 	})

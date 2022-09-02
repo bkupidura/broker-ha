@@ -1,13 +1,25 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/render"
 
 	"brokerha/internal/broker"
+	"brokerha/internal/bus"
 	"brokerha/internal/discovery"
+)
+
+var (
+	// How often to send keepalives in seconds over SSE.
+	sseKeepalive = 60
+	// List of allowed SSE channels.
+	sseChannels = []string{"cluster:message_from", "cluster:message_to", "cluster:new_member"}
 )
 
 // errResponse describes error response for any API call.
@@ -44,6 +56,107 @@ func unableToPerformError(err error) render.Renderer {
 		HTTPStatusCode: http.StatusInternalServerError,
 		StatusText:     "Unable to perform request.",
 		ErrorText:      err.Error(),
+	}
+}
+
+// sseFilterRequest describe API requests with SSE filters.
+// If not filters are provided, SSE will return all channels.
+type sseFilterRequest struct {
+	Filters []string `json:"filters"`
+}
+
+// Bind validates request.
+func (req *sseFilterRequest) Bind(r *http.Request) error {
+	for _, reqFilterName := range req.Filters {
+		allowed := false
+		for _, allowedFilterName := range sseChannels {
+			if reqFilterName == allowedFilterName {
+				allowed = true
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("filter not in allowed list %v", sseChannels)
+		}
+	}
+	if len(req.Filters) == 0 {
+		req.Filters = sseChannels
+	}
+	req.Filters = append(req.Filters, "sse:keepalive")
+	return nil
+}
+
+// sseHandler starts Server Sent Events stream.
+// wget -O - -S -q http://localhost:8080/api/sse \
+// --post-data '{"filters": ["cluster:message_from"]}' --header 'Content-Type: application/json'
+func sseHandler(b *bus.Bus) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		request := &sseFilterRequest{}
+		if err := render.Bind(r, request); err != nil {
+			render.Render(w, r, invalidRequestError(err))
+			return
+		}
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			render.Render(w, r, unableToPerformError(errors.New("streaming not supported")))
+			return
+		}
+
+		r.Header.Set("Content-Type", "text/event-stream")
+		r.Header.Set("Cache-Control", "no-cache")
+		r.Header.Set("Connection", "keep-alive")
+
+		subscriptions := make(map[string]chan bus.Event)
+
+		for _, reqFilter := range request.Filters {
+			ch, err := b.Subscribe(reqFilter, r.RemoteAddr, 100)
+			if err != nil {
+				render.Render(w, r, unableToPerformError(err))
+			}
+			defer b.Unsubscribe(reqFilter, r.RemoteAddr)
+			subscriptions[reqFilter] = ch
+		}
+
+		clientDisconnected := r.Context().Done()
+		go func() {
+			<-clientDisconnected
+			for subName := range subscriptions {
+				b.Unsubscribe(subName, r.RemoteAddr)
+			}
+		}()
+		go func() {
+			for {
+				time.Sleep(time.Duration(sseKeepalive) * time.Second)
+				b.Publish("sse:keepalive", "keepalive")
+			}
+		}()
+
+		sseBusEvent := func(e bus.Event) {
+			var sseEvent, sseData string
+			data, err := json.Marshal(e.Data)
+			if err != nil {
+				log.Printf("unable to marshal SSE data %s: %+v", e.ChannelName, e.Data)
+				return
+			}
+			sseEvent = fmt.Sprintf("event: %s\n", e.ChannelName)
+			sseData = fmt.Sprintf("data: %s\n", string(data))
+			w.Write([]byte(sseEvent))
+			w.Write([]byte(sseData))
+			flusher.Flush()
+		}
+
+		for {
+			for _, ch := range subscriptions {
+				select {
+				case e := <-ch:
+					sseBusEvent(e)
+				case <-time.After(10 * time.Millisecond):
+					continue
+				case <-clientDisconnected:
+					return
+				}
+			}
+		}
 	}
 }
 

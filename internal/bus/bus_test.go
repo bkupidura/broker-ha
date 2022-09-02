@@ -74,6 +74,45 @@ func TestAddSubscriber(t *testing.T) {
 		require.Equal(t, test.expectedSubscribers, len(test.inputEventChannel.subscribers))
 		require.Equal(t, test.expectedSubscriptionSize, cap(test.inputEventChannel.subscribers[test.inputSubscriptionName]))
 	}
+}
+
+func TestDelSubscriber(t *testing.T) {
+	tests := []struct {
+		inputEventChannel        *eventChannel
+		inputSubscriptionName    string
+		expectedSubscribers      int
+		expectedSubscriptionSize int
+	}{
+		{
+			inputEventChannel: &eventChannel{
+				subscribers: make(map[string]chan Event),
+			},
+			inputSubscriptionName: "test",
+			expectedSubscribers:   0,
+		},
+		{
+			inputEventChannel: &eventChannel{
+				subscribers: map[string]chan Event{
+					"existing": make(chan Event, 0),
+				},
+			},
+			inputSubscriptionName: "test",
+			expectedSubscribers:   1,
+		},
+		{
+			inputEventChannel: &eventChannel{
+				subscribers: map[string]chan Event{
+					"test": make(chan Event, 0),
+				},
+			},
+			inputSubscriptionName: "test",
+			expectedSubscribers:   0,
+		},
+	}
+	for _, test := range tests {
+		test.inputEventChannel.delSubscriber(test.inputSubscriptionName)
+		require.Equal(t, test.expectedSubscribers, len(test.inputEventChannel.subscribers))
+	}
 
 }
 
@@ -157,6 +196,88 @@ func TestSubscribe(t *testing.T) {
 		require.Equal(t, test.expectedChannels, len(test.inputBus.channels))
 		require.Equal(t, test.expectedSubscribers, len(test.inputBus.channels[test.inputChannelName].subscribers))
 		require.Equal(t, test.expectedSubscriptionSize, cap(ch))
+	}
+}
+
+func TestUnsubscribe(t *testing.T) {
+	tests := []struct {
+		inputBus              *Bus
+		inputChannelName      string
+		inputSubscriptionName string
+		expectedChannels      int
+		expectedSubscribers   int
+	}{
+		{
+			inputBus:              New(),
+			inputChannelName:      "test",
+			inputSubscriptionName: "test",
+			expectedChannels:      0,
+			expectedSubscribers:   0,
+		},
+		{
+			inputBus: &Bus{
+				channels: map[string]*eventChannel{
+					"existing": newEventChannel(),
+				},
+			},
+			inputChannelName:      "test",
+			inputSubscriptionName: "test",
+			expectedChannels:      1,
+			expectedSubscribers:   0,
+		},
+		{
+			inputBus: &Bus{
+				channels: map[string]*eventChannel{
+					"test": {
+						subscribers: map[string]chan Event{
+							"existing": make(chan Event),
+						},
+					},
+				},
+			},
+			inputChannelName:      "test",
+			inputSubscriptionName: "test",
+			expectedChannels:      1,
+			expectedSubscribers:   1,
+		},
+		{
+			inputBus: &Bus{
+				channels: map[string]*eventChannel{
+					"test": {
+						subscribers: map[string]chan Event{
+							"test": make(chan Event, 0),
+						},
+					},
+				},
+			},
+			inputChannelName:      "test",
+			inputSubscriptionName: "test",
+			expectedChannels:      0,
+			expectedSubscribers:   0,
+		},
+		{
+			inputBus: &Bus{
+				channels: map[string]*eventChannel{
+					"test": {
+						subscribers: map[string]chan Event{
+							"existing": make(chan Event, 0),
+							"test":     make(chan Event, 0),
+						},
+					},
+				},
+			},
+			inputChannelName:      "test",
+			inputSubscriptionName: "test",
+			expectedChannels:      1,
+			expectedSubscribers:   1,
+		},
+	}
+	for _, test := range tests {
+		test.inputBus.Unsubscribe(test.inputChannelName, test.inputSubscriptionName)
+		require.Equal(t, test.expectedChannels, len(test.inputBus.channels))
+		if test.expectedSubscribers > 0 {
+			require.Equal(t, test.expectedSubscribers, len(test.inputBus.channels[test.inputChannelName].subscribers))
+		}
 	}
 }
 
@@ -314,6 +435,7 @@ func TestPublish(t *testing.T) {
 				ch, err := b.Subscribe("test", "s1", 1024)
 				require.Nil(t, err)
 				go func() {
+					var mu sync.Mutex
 					r := make(map[string]int)
 					var wg sync.WaitGroup
 					wg.Add(3)
@@ -321,6 +443,8 @@ func TestPublish(t *testing.T) {
 						select {
 						case e := <-ch:
 							require.Equal(t, "test", e.ChannelName)
+							mu.Lock()
+							defer mu.Unlock()
 							r[n]++
 							wg.Done()
 						}

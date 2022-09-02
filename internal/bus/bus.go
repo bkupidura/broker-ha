@@ -3,6 +3,7 @@ package bus
 import (
 	"fmt"
 	"log"
+	"sync"
 )
 
 // Event is used to transport user data over bus.
@@ -34,8 +35,14 @@ func (ch *eventChannel) addSubscriber(subName string, size int) error {
 	return nil
 }
 
+// delSubscriber removes subscriber.
+func (ch *eventChannel) delSubscriber(subName string) {
+	delete(ch.subscribers, subName)
+}
+
 // Bus should be created by New().
 type Bus struct {
+	mu       sync.Mutex
 	channels map[string]*eventChannel
 }
 
@@ -49,6 +56,9 @@ func New() *Bus {
 
 // Subscribe adds new subscriber to channel.
 func (b *Bus) Subscribe(channelName, subName string, size int) (chan Event, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if _, ok := b.channels[channelName]; !ok {
 		b.channels[channelName] = newEventChannel()
 	}
@@ -63,6 +73,25 @@ func (b *Bus) Subscribe(channelName, subName string, size int) (chan Event, erro
 
 }
 
+// Unsubscribe removes subscriber from channel.
+// If this is last subscriber channel will be removed.
+func (b *Bus) Unsubscribe(channelName, subName string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	channel, ok := b.channels[channelName]
+	if !ok {
+		return
+	}
+	channel.delSubscriber(subName)
+
+	if len(channel.subscribers) == 0 {
+		delete(b.channels, channelName)
+	}
+
+	return
+}
+
 // Publish data to channel.
 func (b *Bus) Publish(channelName string, data interface{}) error {
 	channel, ok := b.channels[channelName]
@@ -73,6 +102,7 @@ func (b *Bus) Publish(channelName string, data interface{}) error {
 		ChannelName: channelName,
 		Data:        data,
 	}
+
 	for subName, subscriber := range channel.subscribers {
 		if cap(subscriber) > 0 && len(subscriber) >= cap(subscriber) {
 			log.Printf("channel %s for subscriber %s is full, not publishing new messages", channelName, subName)
