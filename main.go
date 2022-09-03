@@ -44,10 +44,14 @@ func main() {
 
 	evBus := bus.New()
 
+	subscriptionSize := make(map[string]int)
+	config.UnmarshalKey("discovery.subscription_size", &subscriptionSize)
+
 	d, _, err := discovery.New(&discovery.Options{
 		Domain:           config.GetString("discovery.domain"),
 		MemberListConfig: createMemberlistConfig(subMLConfig),
 		Bus:              evBus,
+		SubscriptionSize: subscriptionSize,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -56,11 +60,14 @@ func main() {
 	mqttUserACL := make(map[string][]broker.ACL)
 	config.UnmarshalKey("mqtt.acl", &mqttUserACL)
 
+	config.UnmarshalKey("mqtt.subscription_size", &subscriptionSize)
+
 	b, _, err := broker.New(&broker.Options{
-		MQTTPort:  config.GetInt("mqtt.port"),
-		AuthUsers: config.GetStringMapString("mqtt.user"),
-		AuthACL:   mqttUserACL,
-		Bus:       evBus,
+		MQTTPort:         config.GetInt("mqtt.port"),
+		AuthUsers:        config.GetStringMapString("mqtt.user"),
+		AuthACL:          mqttUserACL,
+		Bus:              evBus,
+		SubscriptionSize: subscriptionSize,
 	})
 	if err != nil {
 		log.Fatal(err)

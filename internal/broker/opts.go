@@ -6,8 +6,9 @@ import (
 
 // Options contains configurable options for the broker.
 type Options struct {
-	AuthUsers map[string]string
-	AuthACL   map[string][]ACL
-	MQTTPort  int
-	Bus       *bus.Bus
+	AuthUsers        map[string]string
+	AuthACL          map[string][]ACL
+	MQTTPort         int
+	Bus              *bus.Bus
+	SubscriptionSize map[string]int
 }

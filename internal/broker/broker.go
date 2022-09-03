@@ -32,12 +32,21 @@ type Broker struct {
 
 // New creates and starts Broker instance.
 func New(opts *Options) (*Broker, context.CancelFunc, error) {
-	chFromCluster, err := opts.Bus.Subscribe("cluster:message_from", "broker", 1024)
+	fromClusterSize, ok := opts.SubscriptionSize["cluster:message_from"]
+	if !ok {
+		return nil, nil, fmt.Errorf("subscription size for cluster:message_from not provided")
+	}
+
+	chFromCluster, err := opts.Bus.Subscribe("cluster:message_from", "broker", fromClusterSize)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	chNewMember, err := opts.Bus.Subscribe("cluster:new_member", "broker", 10)
+	newMemberSize, ok := opts.SubscriptionSize["cluster:new_member"]
+	if !ok {
+		return nil, nil, fmt.Errorf("subscription size for cluster:new_member not provided")
+	}
+	chNewMember, err := opts.Bus.Subscribe("cluster:new_member", "broker", newMemberSize)
 	if err != nil {
 		return nil, nil, err
 	}

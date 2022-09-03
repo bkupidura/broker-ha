@@ -204,14 +204,16 @@ func TestNewRouter(t *testing.T) {
 		Domain:           "test",
 		MemberListConfig: mlConfig,
 		Bus:              evBus,
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024},
 	})
 	require.Nil(t, err)
 	defer discoCtxCancel()
 	defer disco.Shutdown()
 
 	b, brokerCtxCancel, err := broker.New(&broker.Options{
-		MQTTPort: 1883,
-		Bus:      evBus,
+		MQTTPort:         1883,
+		Bus:              evBus,
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	defer brokerCtxCancel()
 	defer b.Shutdown()

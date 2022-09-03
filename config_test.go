@@ -85,6 +85,12 @@ func TestGetConfig(t *testing.T) {
 				d := []byte(`
                 mqtt:
                   port: 1883
+                  subscription_size:
+                    "cluster:message_from": 1024
+                    "cluster:new_member": 10
+                discovery:
+                  subscription_size:
+                    "cluster:message_to": 1024
                 cluster:
                   expected_members: 3
                   config:

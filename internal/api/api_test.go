@@ -127,6 +127,32 @@ func TestSseHandler(t *testing.T) {
 				require.Nil(t, err)
 			},
 			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest: map[string]interface{}{
+				"channel_size": 1,
+			},
+			expectedCode: http.StatusOK,
+			expectedBody: []string{
+				"event: cluster:message_from\ndata: \"message_from\"\n",
+				"event: cluster:message_to\ndata: \"message_to\"\n",
+				"event: cluster:new_member\ndata: \"new_member\"\n",
+			},
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout: 50,
+			inputPublishFunc: func(b *bus.Bus) {
+				time.Sleep(10 * time.Millisecond)
+				err := b.Publish("cluster:message_from", "message_from")
+				require.Nil(t, err)
+				err = b.Publish("cluster:message_to", "message_to")
+				require.Nil(t, err)
+				err = b.Publish("cluster:new_member", "new_member")
+				require.Nil(t, err)
+			},
+			inputResponseRecorder: NewResponseWriter(true),
 			inputRequest:          map[string]interface{}{},
 			expectedCode:          http.StatusOK,
 			expectedBody: []string{
@@ -272,6 +298,7 @@ func TestDiscoveryMembersHandler(t *testing.T) {
 		Domain:           "test",
 		MemberListConfig: mlConfig,
 		Bus:              evBus,
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024},
 	})
 	require.Nil(t, err)
 	defer disco.Shutdown()
@@ -296,9 +323,10 @@ func TestDiscoveryMembersHandler(t *testing.T) {
 func TestMqttClientsHandler(t *testing.T) {
 	evBus := bus.New()
 	b, ctxCancel, err := broker.New(&broker.Options{
-		MQTTPort:  1883,
-		Bus:       evBus,
-		AuthUsers: map[string]string{"test": "test"},
+		MQTTPort:         1883,
+		Bus:              evBus,
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
 	defer b.Shutdown()
@@ -369,9 +397,10 @@ func TestMqttClientStopHandler(t *testing.T) {
 
 	evBus := bus.New()
 	b, ctxCancel, err := broker.New(&broker.Options{
-		MQTTPort:  1883,
-		Bus:       evBus,
-		AuthUsers: map[string]string{"test": "test"},
+		MQTTPort:         1883,
+		Bus:              evBus,
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
 	defer b.Shutdown()
@@ -450,9 +479,10 @@ func TestMqttClientInflightHandler(t *testing.T) {
 
 	evBus := bus.New()
 	b, ctxCancel, err := broker.New(&broker.Options{
-		MQTTPort:  1883,
-		Bus:       evBus,
-		AuthUsers: map[string]string{"test": "test"},
+		MQTTPort:         1883,
+		Bus:              evBus,
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
 	defer b.Shutdown()
@@ -544,9 +574,10 @@ func TestMqttTopicMessagesHandler(t *testing.T) {
 	}
 	evBus := bus.New()
 	b, ctxCancel, err := broker.New(&broker.Options{
-		MQTTPort:  1883,
-		Bus:       evBus,
-		AuthUsers: map[string]string{"test": "test"},
+		MQTTPort:         1883,
+		Bus:              evBus,
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
 	defer b.Shutdown()
@@ -619,9 +650,10 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 
 	evBus := bus.New()
 	b, ctxCancel, err := broker.New(&broker.Options{
-		MQTTPort:  1883,
-		Bus:       evBus,
-		AuthUsers: map[string]string{"test": "test"},
+		MQTTPort:         1883,
+		Bus:              evBus,
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
 	defer b.Shutdown()

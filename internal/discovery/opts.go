@@ -11,4 +11,5 @@ type Options struct {
 	Domain           string
 	MemberListConfig *memberlist.Config
 	Bus              *bus.Bus
+	SubscriptionSize map[string]int
 }

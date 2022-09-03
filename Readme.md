@@ -42,8 +42,13 @@ api:
     admin: admin
 discovery:
   domain: broker-headless.broker-ha.svc.cluster.local
+  subscription_size:
+    "cluster:message_to": 1024
 mqtt:
   port: 1883
+  subscription_size:
+    "cluster:message_from": 1024
+    "cluster:new_member": 10
   user:
     test: test
     admin: admin
@@ -76,8 +81,14 @@ Every config key can be set with environment variable e.g `BROKER_MQTT_PORT`.
 Default config:
 
 ```
+discovery:
+  subscription_size:
+    "cluster:message_to": 1024
 mqtt:
   port: 1883
+  subscription_size:
+    "cluster:message_from": 1024
+    "cluster:new_member": 10
 cluster:
   expected_members: 3
   config:
@@ -226,6 +237,7 @@ spec:
 - GET `:8080/metrics` - Prometheus metrics endpoint
 - GET `:8080/ready` - Readiness probe endpoint
 - GET `:8080/healthz` - Liveness probe endpoint
+- POST `:8080/api/sse` - Get Server-Sent Events
 - GET `:8080/api/discovery/members` - Get discovery (memberlist) members
 - GET `:8080/api/mqtt/clients` - Get mqtt clients
 - POST `:8080/api/mqtt/client/stop` - Stop (disconnect) mqtt client

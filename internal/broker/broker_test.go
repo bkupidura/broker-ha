@@ -25,9 +25,10 @@ func TestAuth(t *testing.T) {
 	}{
 		{
 			inputOptions: &Options{
-				MQTTPort:  1883,
-				Bus:       bus.New(),
-				AuthUsers: map[string]string{"test": "test"},
+				MQTTPort:         1883,
+				Bus:              bus.New(),
+				AuthUsers:        map[string]string{"test": "test"},
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 			},
 			inputMQTTClientOps: paho.NewClientOptions().
 				AddBroker("127.0.0.1:1883").
@@ -38,9 +39,10 @@ func TestAuth(t *testing.T) {
 		},
 		{
 			inputOptions: &Options{
-				MQTTPort:  1883,
-				Bus:       bus.New(),
-				AuthUsers: map[string]string{"test": "test"},
+				MQTTPort:         1883,
+				Bus:              bus.New(),
+				AuthUsers:        map[string]string{"test": "test"},
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 			},
 			inputMQTTClientOps: paho.NewClientOptions().
 				AddBroker("127.0.0.1:1883").
@@ -52,9 +54,10 @@ func TestAuth(t *testing.T) {
 		},
 		{
 			inputOptions: &Options{
-				MQTTPort:  1883,
-				Bus:       bus.New(),
-				AuthUsers: map[string]string{"test": "test"},
+				MQTTPort:         1883,
+				Bus:              bus.New(),
+				AuthUsers:        map[string]string{"test": "test"},
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 			},
 			inputMQTTClientOps: paho.NewClientOptions().
 				AddBroker("127.0.0.1:1883").
@@ -66,8 +69,9 @@ func TestAuth(t *testing.T) {
 		},
 		{
 			inputOptions: &Options{
-				MQTTPort: 1883,
-				Bus:      bus.New(),
+				MQTTPort:         1883,
+				Bus:              bus.New(),
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 			},
 			inputMQTTClientOps: paho.NewClientOptions().
 				AddBroker("127.0.0.1:1883").
@@ -78,8 +82,9 @@ func TestAuth(t *testing.T) {
 		},
 		{
 			inputOptions: &Options{
-				MQTTPort: 1883,
-				Bus:      bus.New(),
+				MQTTPort:         1883,
+				Bus:              bus.New(),
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 			},
 			inputMQTTClientOps: paho.NewClientOptions().
 				AddBroker("127.0.0.1:1883").
@@ -118,6 +123,27 @@ func TestNew(t *testing.T) {
 			inputOptions: &Options{
 				MQTTPort: 1883,
 			},
+			expectedErr: "subscription size for cluster:message_from not provided",
+		},
+		{
+			inputOptions: &Options{
+				MQTTPort:         1883,
+				SubscriptionSize: map[string]int{"cluster:new_member": 10},
+			},
+			expectedErr: "subscription size for cluster:message_from not provided",
+		},
+		{
+			inputOptions: &Options{
+				MQTTPort:         1883,
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024},
+			},
+			expectedErr: "subscription size for cluster:new_member not provided",
+		},
+		{
+			inputOptions: &Options{
+				MQTTPort:         1883,
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
+			},
 			inputBeforeTest: func(b *bus.Bus) {
 				_, err := b.Subscribe("cluster:message_from", "broker", 1024)
 				require.Nil(t, err)
@@ -126,7 +152,8 @@ func TestNew(t *testing.T) {
 		},
 		{
 			inputOptions: &Options{
-				MQTTPort: 1883,
+				MQTTPort:         1883,
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 			},
 			inputBeforeTest: func(b *bus.Bus) {
 				_, err := b.Subscribe("cluster:new_member", "broker", 1024)
@@ -136,20 +163,23 @@ func TestNew(t *testing.T) {
 		},
 		{
 			inputOptions: &Options{
-				MQTTPort: -1,
+				MQTTPort:         -1,
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 			},
 			expectedErr: "listen tcp: address -1: invalid port",
 		},
 		{
 			inputOptions: &Options{
-				MQTTPort: 1883,
+				MQTTPort:         1883,
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 			},
 			expectedLog: "cluster broker started\nstarting handleNewMember worker\nstarting publishToMQTT worker\n",
 		},
 		{
 			inputOptions: &Options{
-				MQTTPort:  1883,
-				AuthUsers: map[string]string{"test": "test"},
+				MQTTPort:         1883,
+				AuthUsers:        map[string]string{"test": "test"},
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 			},
 			expectedLog: "cluster broker started\nstarting handleNewMember worker\nstarting publishToMQTT worker\n",
 		},
@@ -187,8 +217,9 @@ func TestNew(t *testing.T) {
 
 func TestShutdown(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
-		MQTTPort: 1883,
-		Bus:      bus.New(),
+		MQTTPort:         1883,
+		Bus:              bus.New(),
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
 	defer ctxCancel()
@@ -199,8 +230,9 @@ func TestShutdown(t *testing.T) {
 
 func TestSystemInfo(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
-		MQTTPort: 1883,
-		Bus:      bus.New(),
+		MQTTPort:         1883,
+		Bus:              bus.New(),
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
 	defer broker.server.Close()
@@ -256,8 +288,9 @@ func TestMessages(t *testing.T) {
 		},
 	}
 	broker, ctxCancel, err := New(&Options{
-		MQTTPort: 1883,
-		Bus:      bus.New(),
+		MQTTPort:         1883,
+		Bus:              bus.New(),
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
 	defer broker.server.Close()
@@ -276,9 +309,10 @@ func TestMessages(t *testing.T) {
 
 func TestClients(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
-		MQTTPort:  1883,
-		Bus:       bus.New(),
-		AuthUsers: map[string]string{"test": "test"},
+		MQTTPort:         1883,
+		Bus:              bus.New(),
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
 	defer broker.server.Close()
@@ -332,9 +366,10 @@ func TestClient(t *testing.T) {
 		},
 	}
 	broker, ctxCancel, err := New(&Options{
-		MQTTPort:  1883,
-		Bus:       bus.New(),
-		AuthUsers: map[string]string{"test": "test"},
+		MQTTPort:         1883,
+		Bus:              bus.New(),
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
 	defer broker.server.Close()
@@ -393,9 +428,10 @@ func TestStopClient(t *testing.T) {
 		},
 	}
 	broker, ctxCancel, err := New(&Options{
-		MQTTPort:  1883,
-		Bus:       bus.New(),
-		AuthUsers: map[string]string{"test": "test"},
+		MQTTPort:         1883,
+		Bus:              bus.New(),
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
 	defer broker.server.Close()
@@ -446,9 +482,10 @@ func TestInflights(t *testing.T) {
 	}
 	evBus := bus.New()
 	broker, ctxCancel, err := New(&Options{
-		MQTTPort:  1883,
-		Bus:       evBus,
-		AuthUsers: map[string]string{"test": "test"},
+		MQTTPort:         1883,
+		Bus:              evBus,
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
 	defer broker.Shutdown()
@@ -505,9 +542,10 @@ func TestSubscribers(t *testing.T) {
 	}
 	evBus := bus.New()
 	broker, ctxCancel, err := New(&Options{
-		MQTTPort:  1883,
-		Bus:       evBus,
-		AuthUsers: map[string]string{"test": "test"},
+		MQTTPort:         1883,
+		Bus:              evBus,
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
 	defer broker.Shutdown()

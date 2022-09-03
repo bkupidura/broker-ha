@@ -72,7 +72,12 @@ func New(opts *Options) (*Discovery, context.CancelFunc, error) {
 		bus: d.bus,
 	}
 
-	chToCluster, err := d.bus.Subscribe("cluster:message_to", "discovery", 1024)
+	toClusterSize, ok := opts.SubscriptionSize["cluster:message_to"]
+	if !ok {
+		return nil, nil, fmt.Errorf("subscription size for cluster:message_to not provided")
+	}
+
+	chToCluster, err := d.bus.Subscribe("cluster:message_to", "discovery", toClusterSize)
 	if err != nil {
 		return nil, nil, err
 	}

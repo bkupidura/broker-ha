@@ -62,7 +62,8 @@ func unableToPerformError(err error) render.Renderer {
 // sseFilterRequest describe API requests with SSE filters.
 // If not filters are provided, SSE will return all channels.
 type sseFilterRequest struct {
-	Filters []string `json:"filters"`
+	Filters     []string `json:"filters"`
+	ChannelSize int      `json:"channel_size"`
 }
 
 // Bind validates request.
@@ -80,6 +81,9 @@ func (req *sseFilterRequest) Bind(r *http.Request) error {
 	}
 	if len(req.Filters) == 0 {
 		req.Filters = sseChannels
+	}
+	if req.ChannelSize < 100 {
+		req.ChannelSize = 100
 	}
 	req.Filters = append(req.Filters, "sse:keepalive")
 	return nil
@@ -109,7 +113,7 @@ func sseHandler(b *bus.Bus) func(http.ResponseWriter, *http.Request) {
 		subscriptions := make(map[string]chan bus.Event)
 
 		for _, reqFilter := range request.Filters {
-			ch, err := b.Subscribe(reqFilter, r.RemoteAddr, 100)
+			ch, err := b.Subscribe(reqFilter, r.RemoteAddr, request.ChannelSize)
 			if err != nil {
 				render.Render(w, r, unableToPerformError(err))
 			}

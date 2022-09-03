@@ -34,6 +34,7 @@ func TestNew(t *testing.T) {
 			inputOptions: &Options{
 				Domain:           "test",
 				MemberListConfig: memberlist.DefaultLocalConfig(),
+				SubscriptionSize: map[string]int{"cluster:message_to": 1024},
 			},
 		},
 		{
@@ -46,6 +47,7 @@ func TestNew(t *testing.T) {
 			inputOptions: &Options{
 				Domain:           "test",
 				MemberListConfig: memberlist.DefaultLocalConfig(),
+				SubscriptionSize: map[string]int{"cluster:message_to": 1024},
 			},
 			inputBeforeTest: func(b *bus.Bus) {
 				b.Subscribe("cluster:message_to", "discovery", 0)
@@ -64,6 +66,7 @@ func TestNew(t *testing.T) {
 			inputOptions: &Options{
 				Domain:           "test",
 				MemberListConfig: memberlist.DefaultLocalConfig(),
+				SubscriptionSize: map[string]int{"cluster:message_to": 1024},
 			},
 			expectedErr: errors.New("memberlistCreate mock error"),
 		},
@@ -77,6 +80,34 @@ func TestNew(t *testing.T) {
 			inputOptions: &Options{
 				Domain:           "test",
 				MemberListConfig: memberlist.DefaultLocalConfig(),
+			},
+			expectedErr: errors.New("subscription size for cluster:message_to not provided"),
+		},
+		{
+			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
+				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
+				ip1.IP = net.ParseIP("10.10.10.10")
+				return []net.Addr{ip1}, nil
+			},
+			mockMemberlistCreate: memberlist.Create,
+			inputOptions: &Options{
+				Domain:           "test",
+				MemberListConfig: memberlist.DefaultLocalConfig(),
+				SubscriptionSize: map[string]int{"test": 1024},
+			},
+			expectedErr: errors.New("subscription size for cluster:message_to not provided"),
+		},
+		{
+			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
+				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
+				ip1.IP = net.ParseIP("10.10.10.10")
+				return []net.Addr{ip1}, nil
+			},
+			mockMemberlistCreate: memberlist.Create,
+			inputOptions: &Options{
+				Domain:           "test",
+				MemberListConfig: memberlist.DefaultLocalConfig(),
+				SubscriptionSize: map[string]int{"cluster:message_to": 1024},
 			},
 		},
 	}
@@ -682,6 +713,7 @@ func TestPublishToCluster(t *testing.T) {
 		MemberListConfig: c3,
 		Bus:              evBus,
 		Domain:           "test",
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024},
 	})
 	require.Nil(t, err)
 	defer disco.Shutdown()
