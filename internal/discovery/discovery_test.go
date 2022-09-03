@@ -513,12 +513,12 @@ func TestFormCluster(t *testing.T) {
 
 func TestPopulatePublishBatch(t *testing.T) {
 	tests := []struct {
-		inputMessage    *types.DiscoveryPublishMessage
-		expectedMessage map[string][]*types.DiscoveryPublishMessage
+		inputMessage    types.DiscoveryPublishMessage
+		expectedMessage map[string][]types.DiscoveryPublishMessage
 	}{
 		{
-			inputMessage: &types.DiscoveryPublishMessage{},
-			expectedMessage: map[string][]*types.DiscoveryPublishMessage{
+			inputMessage: types.DiscoveryPublishMessage{},
+			expectedMessage: map[string][]types.DiscoveryPublishMessage{
 				"all": {
 					{
 						Node: []string{"all"},
@@ -527,8 +527,8 @@ func TestPopulatePublishBatch(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: &types.DiscoveryPublishMessage{Node: []string{"127.0.0.1:7946"}},
-			expectedMessage: map[string][]*types.DiscoveryPublishMessage{
+			inputMessage: types.DiscoveryPublishMessage{Node: []string{"127.0.0.1:7946"}},
+			expectedMessage: map[string][]types.DiscoveryPublishMessage{
 				"127.0.0.1:7946": {
 					{
 						Node: []string{"127.0.0.1:7946"},
@@ -537,8 +537,8 @@ func TestPopulatePublishBatch(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: &types.DiscoveryPublishMessage{Node: []string{"127.0.0.1:7946", "2.2.2.2:7946"}},
-			expectedMessage: map[string][]*types.DiscoveryPublishMessage{
+			inputMessage: types.DiscoveryPublishMessage{Node: []string{"127.0.0.1:7946", "2.2.2.2:7946"}},
+			expectedMessage: map[string][]types.DiscoveryPublishMessage{
 				"127.0.0.1:7946": {
 					{
 						Node: []string{"127.0.0.1:7946", "2.2.2.2:7946"},
@@ -553,7 +553,7 @@ func TestPopulatePublishBatch(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		mqttPublishBatch := map[string][]*types.DiscoveryPublishMessage{}
+		mqttPublishBatch := map[string][]types.DiscoveryPublishMessage{}
 		populatePublishBatch(mqttPublishBatch, test.inputMessage)
 		require.Equal(t, test.expectedMessage, mqttPublishBatch)
 	}
@@ -561,14 +561,14 @@ func TestPopulatePublishBatch(t *testing.T) {
 
 func TestPublishToCluster(t *testing.T) {
 	tests := []struct {
-		inputMessage       []*types.DiscoveryPublishMessage
+		inputMessage       []types.DiscoveryPublishMessage
 		jsonMarshal        func(any) ([]byte, error)
 		queueDataTypesFunc func()
 		expectedData       string
 		expectedLog        string
 	}{
 		{
-			inputMessage: []*types.DiscoveryPublishMessage{
+			inputMessage: []types.DiscoveryPublishMessage{
 				{Node: []string{"127.0.0.1:7946"}},
 			},
 			expectedLog: "unable to marshal to cluster message 127.0.0.1:7946: mockJsonMarshal error\n",
@@ -580,7 +580,7 @@ func TestPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*types.DiscoveryPublishMessage{
+			inputMessage: []types.DiscoveryPublishMessage{
 				{Node: []string{"127.0.0.1:7946"}},
 			},
 			expectedLog: "unable to publish message to cluster member 127.0.0.1:7946 (retries 1/3): unknown data type MQTTPublish\nunable to publish message to cluster member 127.0.0.1:7946 (retries 2/3): unknown data type MQTTPublish\nunable to publish message to cluster member 127.0.0.1:7946 (retries 3/3): unknown data type MQTTPublish\n",
@@ -590,7 +590,7 @@ func TestPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*types.DiscoveryPublishMessage{
+			inputMessage: []types.DiscoveryPublishMessage{
 				{Node: []string{"127.0.0.1:7946"}},
 			},
 			expectedLog:  "unable to publish message to cluster member 127.0.0.1:7946 (retries 1/3): unknown data type MQTTPublish\n",
@@ -603,7 +603,7 @@ func TestPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*types.DiscoveryPublishMessage{
+			inputMessage: []types.DiscoveryPublishMessage{
 				{Node: []string{"127.0.0.1:7946"}},
 			},
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
@@ -613,7 +613,7 @@ func TestPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*types.DiscoveryPublishMessage{
+			inputMessage: []types.DiscoveryPublishMessage{
 				{Node: []string{}},
 			},
 			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
@@ -623,7 +623,7 @@ func TestPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*types.DiscoveryPublishMessage{
+			inputMessage: []types.DiscoveryPublishMessage{
 				{},
 				{Node: []string{}},
 			},
@@ -634,7 +634,7 @@ func TestPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*types.DiscoveryPublishMessage{
+			inputMessage: []types.DiscoveryPublishMessage{
 				{Node: []string{"127.0.0.1:7946"}},
 				{Node: []string{"127.0.0.1:7947"}},
 				{},
@@ -646,7 +646,7 @@ func TestPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*types.DiscoveryPublishMessage{
+			inputMessage: []types.DiscoveryPublishMessage{
 				{Node: []string{"127.0.0.1:7946"}},
 				{},
 				{Node: []string{"127.0.0.1:7946"}},
@@ -659,7 +659,7 @@ func TestPublishToCluster(t *testing.T) {
 			},
 		},
 		{
-			inputMessage: []*types.DiscoveryPublishMessage{
+			inputMessage: []types.DiscoveryPublishMessage{
 				{Node: []string{"127.0.0.1:7946"}},
 				{Node: []string{"127.0.0.1:7947"}},
 				{Node: []string{"127.0.0.1:7946"}},

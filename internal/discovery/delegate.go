@@ -32,7 +32,7 @@ func (d *delegate) NotifyMsg(b []byte) {
 
 	switch messageType {
 	case queueDataTypes["MQTTPublish"]:
-		var messages []*types.MQTTPublishMessage
+		var messages []types.MQTTPublishMessage
 		if err := json.Unmarshal(messageData, &messages); err != nil {
 			log.Printf("received malformed message from cluster for MQTTPublish")
 			return

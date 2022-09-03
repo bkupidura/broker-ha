@@ -506,7 +506,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 	mqttClient.Disconnect(10)
 	time.Sleep(50 * time.Millisecond)
 
-	evBus.Publish("cluster:message_from", &types.MQTTPublishMessage{
+	evBus.Publish("cluster:message_from", types.MQTTPublishMessage{
 		Topic:   "TestMqttClientInflightHandler",
 		Payload: []byte("test"),
 		Retain:  true,
@@ -583,7 +583,7 @@ func TestMqttTopicMessagesHandler(t *testing.T) {
 	defer b.Shutdown()
 	defer ctxCancel()
 
-	evBus.Publish("cluster:message_from", &types.MQTTPublishMessage{
+	evBus.Publish("cluster:message_from", types.MQTTPublishMessage{
 		Topic:   "TestMqttTopicMessagesHandler",
 		Payload: []byte("test"),
 		Retain:  true,

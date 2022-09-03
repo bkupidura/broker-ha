@@ -22,7 +22,7 @@ func TestDelegateNotifyMsg(t *testing.T) {
 	tests := []struct {
 		inputMessage    []byte
 		expectedLog     string
-		expectedMessage []*types.MQTTPublishMessage
+		expectedMessage []types.MQTTPublishMessage
 	}{
 		{
 			inputMessage: []byte{},
@@ -40,7 +40,7 @@ func TestDelegateNotifyMsg(t *testing.T) {
 				[]byte{queueDataTypes["MQTTPublish"]},
 				[]byte(`[{"Payload": "dGVzdA==", "Topic": "test", "Retain": true, "Qos": 2}]`)...,
 			),
-			expectedMessage: []*types.MQTTPublishMessage{
+			expectedMessage: []types.MQTTPublishMessage{
 				{
 					Payload: []byte("test"),
 					Topic:   "test",
@@ -54,7 +54,7 @@ func TestDelegateNotifyMsg(t *testing.T) {
 				[]byte{queueDataTypes["MQTTPublish"]},
 				[]byte(`[{"Payload": "dGVzdA==", "Topic": "test", "Retain": false, "Qos": 0}, {"Payload": "dGVzdDI=", "Topic": "test2", "Retain": false, "Qos": 1}, {"Payload": "dGVzdDM=", "Topic": "test3", "Retain": true, "Qos": 2}]`)...,
 			),
-			expectedMessage: []*types.MQTTPublishMessage{
+			expectedMessage: []types.MQTTPublishMessage{
 				{
 					Payload: []byte("test"),
 					Topic:   "test",
@@ -98,7 +98,7 @@ func TestDelegateNotifyMsg(t *testing.T) {
 		if test.expectedMessage != nil {
 			for _, expectedMessage := range test.expectedMessage {
 				e := <-ch
-				receivedMessage := e.Data.(*types.MQTTPublishMessage)
+				receivedMessage := e.Data.(types.MQTTPublishMessage)
 				require.Equal(t, expectedMessage, receivedMessage)
 			}
 		}

@@ -191,11 +191,12 @@ func (b *Broker) Subscribers(filter string) map[string]byte {
 // Its not executed on mqttServer.Publish().
 // When new message is received, it will be send to bus and propagated across cluster members.
 func (b *Broker) onMessage(cl events.Client, pk events.Packet) (pkx events.Packet, err error) {
-	message := &types.DiscoveryPublishMessage{
+	message := types.DiscoveryPublishMessage{
 		Payload: pk.Payload,
 		Topic:   pk.TopicName,
 		Retain:  pk.FixedHeader.Retain,
 		Qos:     pk.FixedHeader.Qos,
+		Node:    []string{"all"},
 	}
 	b.bus.Publish("cluster:message_to", message)
 
@@ -208,7 +209,7 @@ func (b *Broker) publishToMQTT(ctx context.Context, ch chan bus.Event) {
 	for {
 		select {
 		case event := <-ch:
-			message := event.Data.(*types.MQTTPublishMessage)
+			message := event.Data.(types.MQTTPublishMessage)
 			if err := b.server.Publish(message.Topic, message.Payload, message.Retain); err != nil {
 				log.Printf("unable to publish message from cluster %v: %s", message, err)
 			}
@@ -228,7 +229,7 @@ func (b *Broker) handleNewMember(ctx context.Context, ch chan bus.Event) {
 		case event := <-ch:
 			member := event.Data.(string)
 			for _, message := range b.Messages("#") {
-				m := &types.DiscoveryPublishMessage{
+				m := types.DiscoveryPublishMessage{
 					Payload: message.Payload,
 					Topic:   message.Topic,
 					Retain:  message.Retain,

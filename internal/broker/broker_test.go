@@ -509,7 +509,7 @@ func TestInflights(t *testing.T) {
 	mqttClient.Disconnect(10)
 	time.Sleep(50 * time.Millisecond)
 
-	evBus.Publish("cluster:message_from", &types.MQTTPublishMessage{
+	evBus.Publish("cluster:message_from", types.MQTTPublishMessage{
 		Topic:   "TestInflights",
 		Payload: []byte("test"),
 		Retain:  true,
@@ -594,7 +594,7 @@ func TestOnMessage(t *testing.T) {
 	broker.onMessage(eventClient, eventPacket)
 
 	e := <-ch
-	message := e.Data.(*types.DiscoveryPublishMessage)
+	message := e.Data.(types.DiscoveryPublishMessage)
 
 	require.Equal(t, []byte("test"), message.Payload)
 	require.Equal(t, "topic", message.Topic)
@@ -602,16 +602,16 @@ func TestOnMessage(t *testing.T) {
 
 func TestPublishToMQTT(t *testing.T) {
 	tests := []struct {
-		inputMessage    *types.MQTTPublishMessage
+		inputMessage    types.MQTTPublishMessage
 		expectedLog     string
 		expectedMessage *types.MQTTPublishMessage
 	}{
 		{
-			inputMessage: &types.MQTTPublishMessage{Topic: "$SYS", Payload: []byte("test")},
-			expectedLog:  "starting publishToMQTT worker\nunable to publish message from cluster &{[116 101 115 116] $SYS false 0}: cannot publish to $ and $SYS topics\n",
+			inputMessage: types.MQTTPublishMessage{Topic: "$SYS", Payload: []byte("test")},
+			expectedLog:  "starting publishToMQTT worker\nunable to publish message from cluster {[116 101 115 116] $SYS false 0}: cannot publish to $ and $SYS topics\n",
 		},
 		{
-			inputMessage:    &types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test"), Retain: true},
+			inputMessage:    types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test"), Retain: true},
 			expectedLog:     "starting publishToMQTT worker\n",
 			expectedMessage: &types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test"), Retain: true, Qos: 0},
 		},
@@ -657,12 +657,12 @@ func TestHandleNewMember(t *testing.T) {
 	tests := []struct {
 		inputNewMember  string
 		expectedLog     string
-		expectedMessage *types.DiscoveryPublishMessage
+		expectedMessage types.DiscoveryPublishMessage
 	}{
 		{
 			inputNewMember: "127.0.0.1:9746",
 			expectedLog:    "starting handleNewMember queue worker\n",
-			expectedMessage: &types.DiscoveryPublishMessage{
+			expectedMessage: types.DiscoveryPublishMessage{
 				Node:    []string{"127.0.0.1:9746"},
 				Payload: []byte("test"),
 				Topic:   "test",
@@ -700,7 +700,7 @@ func TestHandleNewMember(t *testing.T) {
 		evBus.Publish("cluster:new_member", test.inputNewMember)
 
 		e := <-ch2
-		require.Equal(t, test.expectedMessage, e.Data.(*types.DiscoveryPublishMessage))
+		require.Equal(t, test.expectedMessage, e.Data.(types.DiscoveryPublishMessage))
 
 		ctxCancel()
 		time.Sleep(1 * time.Millisecond)

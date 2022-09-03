@@ -210,17 +210,17 @@ func (d *Discovery) publishToCluster(ctx context.Context, ch chan bus.Event) {
 	log.Printf("starting publishToCluster worker")
 
 	for {
-		mqttPublishBatch := map[string][]*types.DiscoveryPublishMessage{}
+		mqttPublishBatch := map[string][]types.DiscoveryPublishMessage{}
 		select {
 		case event := <-ch:
-			message := event.Data.(*types.DiscoveryPublishMessage)
+			message := event.Data.(types.DiscoveryPublishMessage)
 			populatePublishBatch(mqttPublishBatch, message)
 
 		fetchMultiple:
 			for i := 0; i < mergePublishToCluster; i++ {
 				select {
 				case event := <-ch:
-					message := event.Data.(*types.DiscoveryPublishMessage)
+					message := event.Data.(types.DiscoveryPublishMessage)
 					populatePublishBatch(mqttPublishBatch, message)
 				default:
 					break fetchMultiple
@@ -228,7 +228,7 @@ func (d *Discovery) publishToCluster(ctx context.Context, ch chan bus.Event) {
 			}
 
 			for _, member := range d.Members(false) {
-				var messagesForMember []*types.DiscoveryPublishMessage
+				var messagesForMember []types.DiscoveryPublishMessage
 				if messagesForAll, ok := mqttPublishBatch["all"]; ok {
 					messagesForMember = messagesForAll
 				}
@@ -261,7 +261,7 @@ func (d *Discovery) publishToCluster(ctx context.Context, ch chan bus.Event) {
 }
 
 // populatePublishBatch will prepare map[string][]*MQTTPublishMessage before sending it to cluster.
-func populatePublishBatch(publishBatch map[string][]*types.DiscoveryPublishMessage, message *types.DiscoveryPublishMessage) {
+func populatePublishBatch(publishBatch map[string][]types.DiscoveryPublishMessage, message types.DiscoveryPublishMessage) {
 	if len(message.Node) == 0 {
 		message.Node = []string{"all"}
 	}
