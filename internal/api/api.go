@@ -85,7 +85,7 @@ func (req *sseFilterRequest) Bind(r *http.Request) error {
 	if req.ChannelSize < 100 {
 		req.ChannelSize = 100
 	}
-	req.Filters = append(req.Filters, "sse:keepalive")
+	req.Filters = append(req.Filters, fmt.Sprintf("sse:keepalive:%s", r.RemoteAddr))
 	return nil
 }
 
@@ -106,10 +106,6 @@ func sseHandler(b *bus.Bus) func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		r.Header.Set("Content-Type", "text/event-stream")
-		r.Header.Set("Cache-Control", "no-cache")
-		r.Header.Set("Connection", "keep-alive")
-
 		subscriptions := make(map[string]chan bus.Event)
 
 		for _, reqFilter := range request.Filters {
@@ -121,17 +117,24 @@ func sseHandler(b *bus.Bus) func(http.ResponseWriter, *http.Request) {
 			subscriptions[reqFilter] = ch
 		}
 
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+
 		clientDisconnected := r.Context().Done()
 		go func() {
-			<-clientDisconnected
-			for subName := range subscriptions {
-				b.Unsubscribe(subName, r.RemoteAddr)
-			}
-		}()
-		go func() {
 			for {
-				time.Sleep(time.Duration(sseKeepalive) * time.Second)
-				b.Publish("sse:keepalive", "keepalive")
+				select {
+				case <-time.After(time.Duration(sseKeepalive) * time.Second):
+					b.Publish(fmt.Sprintf("sse:keepalive:%s", r.RemoteAddr), "keepalive")
+				case <-clientDisconnected:
+					for subName := range subscriptions {
+						b.Unsubscribe(subName, r.RemoteAddr)
+					}
+					return
+				}
 			}
 		}()
 

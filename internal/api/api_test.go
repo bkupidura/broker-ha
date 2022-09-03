@@ -171,7 +171,7 @@ func TestSseHandler(t *testing.T) {
 			inputRequest:          map[string]interface{}{},
 			expectedCode:          http.StatusOK,
 			expectedBody: []string{
-				"event: sse:keepalive\ndata: \"keepalive\"\n",
+				"event: sse:keepalive:1.2.3.4:60000\ndata: \"keepalive\"\n",
 			},
 		},
 		{
