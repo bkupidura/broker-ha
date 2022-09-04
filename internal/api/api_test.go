@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,15 +45,16 @@ func TestSseHandler(t *testing.T) {
 			},
 			expectedCode:  http.StatusBadRequest,
 			expectedError: "filter not in allowed list [cluster:message_from cluster:message_to cluster:new_member]",
+			expectedBody:  []string{""},
 		},
 		{
 			inputBusFunc: func() *bus.Bus {
 				b := bus.New()
 				return b
 			},
-			inputCancelTimeout: 50,
+			inputCancelTimeout: 100,
 			inputPublishFunc: func(b *bus.Bus) {
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(20 * time.Millisecond)
 				err := b.Publish("cluster:message_from", "message_from")
 				require.Nil(t, err)
 				b.Publish("cluster:message_to", "message_to")
@@ -64,7 +66,9 @@ func TestSseHandler(t *testing.T) {
 			},
 			expectedCode: http.StatusOK,
 			expectedBody: []string{
-				"event: cluster:message_from\ndata: \"message_from\"\n",
+				"",
+				"event: cluster:message_from",
+				"data: \"message_from\"",
 			},
 		},
 		{
@@ -72,9 +76,9 @@ func TestSseHandler(t *testing.T) {
 				b := bus.New()
 				return b
 			},
-			inputCancelTimeout: 50,
+			inputCancelTimeout: 100,
 			inputPublishFunc: func(b *bus.Bus) {
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(20 * time.Millisecond)
 				b.Publish("cluster:message_from", "message_from")
 				err := b.Publish("cluster:message_to", "message_to")
 				require.Nil(t, err)
@@ -86,7 +90,9 @@ func TestSseHandler(t *testing.T) {
 			},
 			expectedCode: http.StatusOK,
 			expectedBody: []string{
-				"event: cluster:message_to\ndata: \"message_to\"\n",
+				"",
+				"event: cluster:message_to",
+				"data: \"message_to\"",
 			},
 		},
 		{
@@ -94,9 +100,9 @@ func TestSseHandler(t *testing.T) {
 				b := bus.New()
 				return b
 			},
-			inputCancelTimeout: 50,
+			inputCancelTimeout: 100,
 			inputPublishFunc: func(b *bus.Bus) {
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(20 * time.Millisecond)
 				b.Publish("cluster:message_from", "message_from")
 				b.Publish("cluster:message_to", "message_to")
 				err := b.Publish("cluster:new_member", "new_member")
@@ -108,7 +114,9 @@ func TestSseHandler(t *testing.T) {
 			},
 			expectedCode: http.StatusOK,
 			expectedBody: []string{
-				"event: cluster:new_member\ndata: \"new_member\"\n",
+				"",
+				"event: cluster:new_member",
+				"data: \"new_member\"",
 			},
 		},
 		{
@@ -116,9 +124,9 @@ func TestSseHandler(t *testing.T) {
 				b := bus.New()
 				return b
 			},
-			inputCancelTimeout: 50,
+			inputCancelTimeout: 100,
 			inputPublishFunc: func(b *bus.Bus) {
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(20 * time.Millisecond)
 				err := b.Publish("cluster:message_from", "message_from")
 				require.Nil(t, err)
 				err = b.Publish("cluster:message_to", "message_to")
@@ -132,9 +140,13 @@ func TestSseHandler(t *testing.T) {
 			},
 			expectedCode: http.StatusOK,
 			expectedBody: []string{
-				"event: cluster:message_from\ndata: \"message_from\"\n",
-				"event: cluster:message_to\ndata: \"message_to\"\n",
-				"event: cluster:new_member\ndata: \"new_member\"\n",
+				"",
+				"event: cluster:message_from",
+				"data: \"message_from\"",
+				"event: cluster:message_to",
+				"data: \"message_to\"",
+				"event: cluster:new_member",
+				"data: \"new_member\"",
 			},
 		},
 		{
@@ -142,9 +154,9 @@ func TestSseHandler(t *testing.T) {
 				b := bus.New()
 				return b
 			},
-			inputCancelTimeout: 50,
+			inputCancelTimeout: 100,
 			inputPublishFunc: func(b *bus.Bus) {
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(20 * time.Millisecond)
 				err := b.Publish("cluster:message_from", "message_from")
 				require.Nil(t, err)
 				err = b.Publish("cluster:message_to", "message_to")
@@ -156,9 +168,13 @@ func TestSseHandler(t *testing.T) {
 			inputRequest:          map[string]interface{}{},
 			expectedCode:          http.StatusOK,
 			expectedBody: []string{
-				"event: cluster:message_from\ndata: \"message_from\"\n",
-				"event: cluster:message_to\ndata: \"message_to\"\n",
-				"event: cluster:new_member\ndata: \"new_member\"\n",
+				"",
+				"event: cluster:message_from",
+				"data: \"message_from\"",
+				"event: cluster:message_to",
+				"data: \"message_to\"",
+				"event: cluster:new_member",
+				"data: \"new_member\"",
 			},
 		},
 		{
@@ -171,7 +187,9 @@ func TestSseHandler(t *testing.T) {
 			inputRequest:          map[string]interface{}{},
 			expectedCode:          http.StatusOK,
 			expectedBody: []string{
-				"event: sse:keepalive:1.2.3.4:60000\ndata: \"keepalive\"\n",
+				"",
+				"event: sse:keepalive:1.2.3.4:60000",
+				"data: \"keepalive\"",
 			},
 		},
 		{
@@ -186,6 +204,7 @@ func TestSseHandler(t *testing.T) {
 			inputRequest:          map[string]interface{}{},
 			expectedCode:          http.StatusInternalServerError,
 			expectedError:         "subscriber 1.2.3.4:60000 already exists",
+			expectedBody:          []string{""},
 		},
 		{
 			inputBusFunc: func() *bus.Bus {
@@ -199,6 +218,7 @@ func TestSseHandler(t *testing.T) {
 			inputRequest:          map[string]interface{}{},
 			expectedCode:          http.StatusInternalServerError,
 			expectedError:         "subscriber 1.2.3.4:60000 already exists",
+			expectedBody:          []string{""},
 		},
 		{
 			inputBusFunc: func() *bus.Bus {
@@ -212,6 +232,7 @@ func TestSseHandler(t *testing.T) {
 			inputRequest:          map[string]interface{}{},
 			expectedCode:          http.StatusInternalServerError,
 			expectedError:         "subscriber 1.2.3.4:60000 already exists",
+			expectedBody:          []string{""},
 		},
 		{
 			inputBusFunc: func() *bus.Bus {
@@ -219,24 +240,26 @@ func TestSseHandler(t *testing.T) {
 				return b
 			},
 			inputPublishFunc: func(b *bus.Bus) {
-				time.Sleep(5 * time.Millisecond)
+				time.Sleep(20 * time.Millisecond)
 				err := b.Publish("cluster:new_member", make(chan int))
 				require.Nil(t, err)
 			},
-			inputCancelTimeout:    50,
+			inputCancelTimeout:    100,
 			inputResponseRecorder: NewResponseWriter(true),
 			expectedCode:          http.StatusOK,
+			expectedBody:          []string{""},
 		},
 		{
 			inputBusFunc: func() *bus.Bus {
 				b := bus.New()
 				return b
 			},
-			inputCancelTimeout:    50,
+			inputCancelTimeout:    10,
 			inputResponseRecorder: NewResponseWriter(false),
 			inputRequest:          map[string]interface{}{},
 			expectedCode:          http.StatusInternalServerError,
 			expectedError:         "streaming not supported",
+			expectedBody:          []string{""},
 		},
 	}
 	sseKeepalive = 3
@@ -280,9 +303,10 @@ func TestSseHandler(t *testing.T) {
 		}
 		b, err := io.ReadAll(res.Body)
 		require.Nil(t, err)
-		for _, expectedBody := range test.expectedBody {
-			require.Contains(t, string(b), expectedBody)
-		}
+
+		require.ElementsMatch(t, test.expectedBody, strings.Split(string(b), "\n"))
+
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 

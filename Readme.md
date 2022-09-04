@@ -237,9 +237,9 @@ spec:
 Events are passed to subscribers over golang channel.
 
 List of channels:
-- cluster:message_from - event is generated when new MQTT message from cluster is received. Message will be published to local broker instance.
-- cluster:message_to - event is generated when new MQTT message is published to broker. Message will be published to cluster for other instances.
-- cluster:new_member - event is generated when new member joins cluster.
+- `cluster:message_from` - event is generated when new MQTT message from cluster is received. Message will be published to local broker instance.
+- `cluster:message_to` - event is generated when new MQTT message is published to broker. Message will be published to cluster for other instances.
+- `cluster:new_member` - event is generated when new member joins cluster.
 
 ## HTTP
 
