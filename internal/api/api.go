@@ -90,8 +90,7 @@ func (req *sseFilterRequest) Bind(r *http.Request) error {
 }
 
 // sseHandler starts Server Sent Events stream.
-// wget -O - -S -q http://localhost:8080/api/sse \
-// --post-data '{"filters": ["cluster:message_from"]}' --header 'Content-Type: application/json'
+// sseFilterRequest should be passed.
 func sseHandler(b *bus.Bus) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := &sseFilterRequest{}
@@ -168,7 +167,6 @@ func sseHandler(b *bus.Bus) func(http.ResponseWriter, *http.Request) {
 }
 
 // discoveryMembersHandler returns all discovery (memberlist) members.
-// wget -O - -S -q http://localhost:8080/api/discovery/members
 func discoveryMembersHandler(d *discovery.Discovery) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		render.JSON(w, r, d.Members(true))
@@ -176,7 +174,6 @@ func discoveryMembersHandler(d *discovery.Discovery) func(http.ResponseWriter, *
 }
 
 // mqttClientsHandler returns all mqtt clients.
-// wget -O - -S -q http://localhost:8080/api/mqtt/clients
 func mqttClientsHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		render.JSON(w, r, b.Clients())
@@ -197,8 +194,6 @@ func (req *mqttClientIDRequest) Bind(r *http.Request) error {
 }
 
 // mqttClientStopHandler will stop (disconnect) mqtt client.
-// wget -O - -S -q http://localhost:8080/api/mqtt/client/stop \
-// --post-data '{"client_id": "cc16d0v002aeifmbddo0"}' --header 'Content-Type: application/json'
 // mqttClientIDRequest should be passed.
 func mqttClientStopHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -214,8 +209,6 @@ func mqttClientStopHandler(b *broker.Broker) func(http.ResponseWriter, *http.Req
 }
 
 // mqttClientInflightHandler will return Inflight messages for client.
-// wget -O - -S -q http://localhost:8080/api/mqtt/client/inflight \
-// --post-data '{"client_id": "cc16d0v002aeifmbddo0"}' --header 'Content-Type: application/json'
 // mqttClientIDRequest should be passed.
 func mqttClientInflightHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -247,8 +240,6 @@ func (req *mqttTopicNameRequest) Bind(r *http.Request) error {
 }
 
 // mqttTopicMessagesHandler will return messages based on topic.
-// wget -O - -S -q http://localhost:8080/api/mqtt/topic/messages \
-// --post-data '{"topic": "#"}' --header 'Content-Type: application/json'
 // mqttTopicNameRequest should be passed.
 func mqttTopicMessagesHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -262,8 +253,6 @@ func mqttTopicMessagesHandler(b *broker.Broker) func(http.ResponseWriter, *http.
 }
 
 // mqttTopicSubscribersHandler will return subscribers for topic.
-// wget -O - -S -q http://localhost:8080/api/mqtt/topic/subscribers \
-// --post-data '{"topic": "topic"}' --header 'Content-Type: application/json'
 // mqttTopicNameRequest should be passed.
 func mqttTopicSubscribersHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
