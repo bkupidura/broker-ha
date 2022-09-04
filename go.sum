@@ -250,6 +250,8 @@ github.com/mochi-co/mqtt v1.2.2 h1:X/RjFnr//tXTH4fQCpUrpRGnNl9j1I7aPEXfJHhAekY=
 github.com/mochi-co/mqtt v1.2.2/go.mod h1:o0lhQFWL8QtR1+8a9JZmbY8FhZ89MF8vGOGHJNFbCB8=
 github.com/mochi-co/mqtt v1.3.1 h1:5+3iGMa+jXtiDSspM7arIEz720p+gYnyzj8prhOOPLs=
 github.com/mochi-co/mqtt v1.3.1/go.mod h1:o0lhQFWL8QtR1+8a9JZmbY8FhZ89MF8vGOGHJNFbCB8=
+github.com/mochi-co/mqtt v1.3.2 h1:cRqBjKdL1yCEWkz/eHWtaN/ZSpkMpK66+biZnrLrHC8=
+github.com/mochi-co/mqtt v1.3.2/go.mod h1:o0lhQFWL8QtR1+8a9JZmbY8FhZ89MF8vGOGHJNFbCB8=
 github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
 github.com/modern-go/reflect2 v0.0.0-20180701023420-4b7aa43c6742/go.mod h1:bx2lNnkwVCuqBIxFjflWJWanXIb3RllmbCylyMrvgv0=
@@ -540,6 +542,8 @@ golang.org/x/sys v0.0.0-20220817070843-5a390386f1f2 h1:fqTvyMIIj+HRzMmnzr9NtpHP6
 golang.org/x/sys v0.0.0-20220817070843-5a390386f1f2/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.0.0-20220825204002-c680a09ffe64 h1:UiNENfZ8gDvpiWw7IpOMQ27spWmThO1RwwdQVbJahJM=
 golang.org/x/sys v0.0.0-20220825204002-c680a09ffe64/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.0.0-20220829200755-d48e67d00261 h1:v6hYoSR9T5oet+pMXwUWkbiVqx/63mlHjefrHmxwfeY=
+golang.org/x/sys v0.0.0-20220829200755-d48e67d00261/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
 golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
 golang.org/x/text v0.0.0-20170915032832-14c0d48ead0c/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
