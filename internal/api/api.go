@@ -1,13 +1,25 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/render"
-	mqtt "github.com/mochi-co/mqtt/server"
 
+	"brokerha/internal/broker"
+	"brokerha/internal/bus"
 	"brokerha/internal/discovery"
+)
+
+var (
+	// How often to send keepalives in seconds over SSE.
+	sseKeepalive = 60
+	// List of allowed SSE channels.
+	sseChannels = []string{"cluster:message_from", "cluster:message_to", "cluster:new_member"}
 )
 
 // errResponse describes error response for any API call.
@@ -36,19 +48,135 @@ func invalidRequestError(err error) render.Renderer {
 	}
 }
 
-// discoveryMembersHandler returns all discovery (memberlist) members.
-// wget -O - -S -q http://localhost:8080/api/discovery/members
-func discoveryMembersHandler(disco *discovery.Discovery) func(http.ResponseWriter, *http.Request) {
+// unableToPerformError returns 500 http error in case we are not able to
+// perform request.
+func unableToPerformError(err error) render.Renderer {
+	return &errResponse{
+		Err:            err,
+		HTTPStatusCode: http.StatusInternalServerError,
+		StatusText:     "Unable to perform request.",
+		ErrorText:      err.Error(),
+	}
+}
+
+// sseFilterRequest describe API requests with SSE filters.
+// If not filters are provided, SSE will return all channels.
+type sseFilterRequest struct {
+	Filters     []string `json:"filters"`
+	ChannelSize int      `json:"channel_size"`
+}
+
+// Bind validates request.
+func (req *sseFilterRequest) Bind(r *http.Request) error {
+	for _, reqFilterName := range req.Filters {
+		allowed := false
+		for _, allowedFilterName := range sseChannels {
+			if reqFilterName == allowedFilterName {
+				allowed = true
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("filter not in allowed list %v", sseChannels)
+		}
+	}
+	if len(req.Filters) == 0 {
+		req.Filters = sseChannels
+	}
+	if req.ChannelSize < 100 {
+		req.ChannelSize = 100
+	}
+	req.Filters = append(req.Filters, fmt.Sprintf("sse:keepalive:%s", r.RemoteAddr))
+	return nil
+}
+
+// sseHandler starts Server Sent Events stream.
+// sseFilterRequest should be passed.
+func sseHandler(b *bus.Bus) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		render.JSON(w, r, disco.Members(true))
+		request := &sseFilterRequest{}
+		if err := render.Bind(r, request); err != nil {
+			render.Render(w, r, invalidRequestError(err))
+			return
+		}
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			render.Render(w, r, unableToPerformError(errors.New("streaming not supported")))
+			return
+		}
+
+		subscriptions := make(map[string]chan bus.Event)
+
+		for _, reqFilter := range request.Filters {
+			ch, err := b.Subscribe(reqFilter, r.RemoteAddr, request.ChannelSize)
+			if err != nil {
+				render.Render(w, r, unableToPerformError(err))
+			}
+			defer b.Unsubscribe(reqFilter, r.RemoteAddr)
+			subscriptions[reqFilter] = ch
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+
+		clientDisconnected := r.Context().Done()
+		go func() {
+			for {
+				select {
+				case <-time.After(time.Duration(sseKeepalive) * time.Second):
+					b.Publish(fmt.Sprintf("sse:keepalive:%s", r.RemoteAddr), "keepalive")
+				case <-clientDisconnected:
+					for subName := range subscriptions {
+						b.Unsubscribe(subName, r.RemoteAddr)
+					}
+					return
+				}
+			}
+		}()
+
+		sseBusEvent := func(e bus.Event) {
+			var sseEvent, sseData string
+			data, err := json.Marshal(e.Data)
+			if err != nil {
+				log.Printf("unable to marshal SSE data %s: %+v", e.ChannelName, e.Data)
+				return
+			}
+			sseEvent = fmt.Sprintf("event: %s\n", e.ChannelName)
+			sseData = fmt.Sprintf("data: %s\n", string(data))
+			w.Write([]byte(sseEvent))
+			w.Write([]byte(sseData))
+			flusher.Flush()
+		}
+
+		for {
+			for _, ch := range subscriptions {
+				select {
+				case e := <-ch:
+					sseBusEvent(e)
+				case <-time.After(10 * time.Millisecond):
+					continue
+				case <-clientDisconnected:
+					return
+				}
+			}
+		}
+	}
+}
+
+// discoveryMembersHandler returns all discovery (memberlist) members.
+func discoveryMembersHandler(d *discovery.Discovery) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		render.JSON(w, r, d.Members(true))
 	}
 }
 
 // mqttClientsHandler returns all mqtt clients.
-// wget -O - -S -q http://localhost:8080/api/mqtt/clients
-func mqttClientsHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
+func mqttClientsHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		render.JSON(w, r, mqttServer.Clients.GetAll())
+		render.JSON(w, r, b.Clients())
 	}
 }
 
@@ -66,42 +194,35 @@ func (req *mqttClientIDRequest) Bind(r *http.Request) error {
 }
 
 // mqttClientStopHandler will stop (disconnect) mqtt client.
-// wget -O - -S -q http://localhost:8080/api/mqtt/client/stop \
-// --post-data '{"client_id": "cc16d0v002aeifmbddo0"}' --header 'Content-Type: application/json'
 // mqttClientIDRequest should be passed.
-func mqttClientStopHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
+func mqttClientStopHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := &mqttClientIDRequest{}
 		if err := render.Bind(r, request); err != nil {
 			render.Render(w, r, invalidRequestError(err))
 			return
 		}
-		client, ok := mqttServer.Clients.Get(request.ClientID)
-		if !ok {
-			render.Render(w, r, invalidRequestError(errors.New("unknown client")))
-			return
+		if err := b.StopClient(request.ClientID, "stopped by API"); err != nil {
+			render.Render(w, r, unableToPerformError(err))
 		}
-		client.Stop(errors.New("stopped by API"))
 	}
 }
 
 // mqttClientInflightHandler will return Inflight messages for client.
-// wget -O - -S -q http://localhost:8080/api/mqtt/client/inflight \
-// --post-data '{"client_id": "cc16d0v002aeifmbddo0"}' --header 'Content-Type: application/json'
 // mqttClientIDRequest should be passed.
-func mqttClientInflightHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
+func mqttClientInflightHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := &mqttClientIDRequest{}
 		if err := render.Bind(r, request); err != nil {
 			render.Render(w, r, invalidRequestError(err))
 			return
 		}
-		client, ok := mqttServer.Clients.Get(request.ClientID)
-		if !ok {
-			render.Render(w, r, invalidRequestError(errors.New("unknown client")))
+		messages, err := b.Inflights(request.ClientID)
+		if err != nil {
+			render.Render(w, r, unableToPerformError(err))
 			return
 		}
-		render.JSON(w, r, client.Inflight.GetAll())
+		render.JSON(w, r, messages)
 	}
 }
 
@@ -119,31 +240,27 @@ func (req *mqttTopicNameRequest) Bind(r *http.Request) error {
 }
 
 // mqttTopicMessagesHandler will return messages based on topic.
-// wget -O - -S -q http://localhost:8080/api/mqtt/topic/messages \
-// --post-data '{"topic": "#"}' --header 'Content-Type: application/json'
 // mqttTopicNameRequest should be passed.
-func mqttTopicMessagesHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
+func mqttTopicMessagesHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := &mqttTopicNameRequest{}
 		if err := render.Bind(r, request); err != nil {
 			render.Render(w, r, invalidRequestError(err))
 			return
 		}
-		render.JSON(w, r, mqttServer.Topics.Messages(request.Topic))
+		render.JSON(w, r, b.Messages(request.Topic))
 	}
 }
 
 // mqttTopicSubscribersHandler will return subscribers for topic.
-// wget -O - -S -q http://localhost:8080/api/mqtt/topic/subscribers \
-// --post-data '{"topic": "topic"}' --header 'Content-Type: application/json'
 // mqttTopicNameRequest should be passed.
-func mqttTopicSubscribersHandler(mqttServer *mqtt.Server) func(http.ResponseWriter, *http.Request) {
+func mqttTopicSubscribersHandler(b *broker.Broker) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		request := &mqttTopicNameRequest{}
 		if err := render.Bind(r, request); err != nil {
 			render.Render(w, r, invalidRequestError(err))
 			return
 		}
-		render.JSON(w, r, mqttServer.Topics.Subscribers(request.Topic))
+		render.JSON(w, r, b.Subscribers(request.Topic))
 	}
 }

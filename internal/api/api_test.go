@@ -2,22 +2,289 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/hashicorp/memberlist"
-	mqtt "github.com/mochi-co/mqtt/server"
-	"github.com/mochi-co/mqtt/server/listeners"
 	"github.com/stretchr/testify/require"
 
+	"brokerha/internal/broker"
+	"brokerha/internal/bus"
 	"brokerha/internal/discovery"
+	"brokerha/internal/types"
 )
+
+func TestSseHandler(t *testing.T) {
+	tests := []struct {
+		inputBusFunc          func() *bus.Bus
+		inputCancelTimeout    int
+		inputPublishFunc      func(*bus.Bus)
+		inputResponseRecorder ResponseWriter
+		inputRequest          map[string]interface{}
+		expectedError         string
+		expectedCode          int
+		expectedBody          []string
+	}{
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout:    10,
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest: map[string]interface{}{
+				"filters": []string{"unknown"},
+			},
+			expectedCode:  http.StatusBadRequest,
+			expectedError: "filter not in allowed list [cluster:message_from cluster:message_to cluster:new_member]",
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout: 50,
+			inputPublishFunc: func(b *bus.Bus) {
+				time.Sleep(10 * time.Millisecond)
+				err := b.Publish("cluster:message_from", "message_from")
+				require.Nil(t, err)
+				b.Publish("cluster:message_to", "message_to")
+				b.Publish("cluster:new_member", "new_member")
+			},
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest: map[string]interface{}{
+				"filters": []string{"cluster:message_from"},
+			},
+			expectedCode: http.StatusOK,
+			expectedBody: []string{
+				"event: cluster:message_from\ndata: \"message_from\"\n",
+			},
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout: 50,
+			inputPublishFunc: func(b *bus.Bus) {
+				time.Sleep(10 * time.Millisecond)
+				b.Publish("cluster:message_from", "message_from")
+				err := b.Publish("cluster:message_to", "message_to")
+				require.Nil(t, err)
+				b.Publish("cluster:new_member", "new_member")
+			},
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest: map[string]interface{}{
+				"filters": []string{"cluster:message_to"},
+			},
+			expectedCode: http.StatusOK,
+			expectedBody: []string{
+				"event: cluster:message_to\ndata: \"message_to\"\n",
+			},
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout: 50,
+			inputPublishFunc: func(b *bus.Bus) {
+				time.Sleep(10 * time.Millisecond)
+				b.Publish("cluster:message_from", "message_from")
+				b.Publish("cluster:message_to", "message_to")
+				err := b.Publish("cluster:new_member", "new_member")
+				require.Nil(t, err)
+			},
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest: map[string]interface{}{
+				"filters": []string{"cluster:new_member"},
+			},
+			expectedCode: http.StatusOK,
+			expectedBody: []string{
+				"event: cluster:new_member\ndata: \"new_member\"\n",
+			},
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout: 50,
+			inputPublishFunc: func(b *bus.Bus) {
+				time.Sleep(10 * time.Millisecond)
+				err := b.Publish("cluster:message_from", "message_from")
+				require.Nil(t, err)
+				err = b.Publish("cluster:message_to", "message_to")
+				require.Nil(t, err)
+				err = b.Publish("cluster:new_member", "new_member")
+				require.Nil(t, err)
+			},
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest: map[string]interface{}{
+				"channel_size": 1,
+			},
+			expectedCode: http.StatusOK,
+			expectedBody: []string{
+				"event: cluster:message_from\ndata: \"message_from\"\n",
+				"event: cluster:message_to\ndata: \"message_to\"\n",
+				"event: cluster:new_member\ndata: \"new_member\"\n",
+			},
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout: 50,
+			inputPublishFunc: func(b *bus.Bus) {
+				time.Sleep(10 * time.Millisecond)
+				err := b.Publish("cluster:message_from", "message_from")
+				require.Nil(t, err)
+				err = b.Publish("cluster:message_to", "message_to")
+				require.Nil(t, err)
+				err = b.Publish("cluster:new_member", "new_member")
+				require.Nil(t, err)
+			},
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest:          map[string]interface{}{},
+			expectedCode:          http.StatusOK,
+			expectedBody: []string{
+				"event: cluster:message_from\ndata: \"message_from\"\n",
+				"event: cluster:message_to\ndata: \"message_to\"\n",
+				"event: cluster:new_member\ndata: \"new_member\"\n",
+			},
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout:    3100,
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest:          map[string]interface{}{},
+			expectedCode:          http.StatusOK,
+			expectedBody: []string{
+				"event: sse:keepalive:1.2.3.4:60000\ndata: \"keepalive\"\n",
+			},
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				_, err := b.Subscribe("cluster:message_from", "1.2.3.4:60000", 1024)
+				require.Nil(t, err)
+				return b
+			},
+			inputCancelTimeout:    10,
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest:          map[string]interface{}{},
+			expectedCode:          http.StatusInternalServerError,
+			expectedError:         "subscriber 1.2.3.4:60000 already exists",
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				_, err := b.Subscribe("cluster:message_to", "1.2.3.4:60000", 1024)
+				require.Nil(t, err)
+				return b
+			},
+			inputCancelTimeout:    10,
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest:          map[string]interface{}{},
+			expectedCode:          http.StatusInternalServerError,
+			expectedError:         "subscriber 1.2.3.4:60000 already exists",
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				_, err := b.Subscribe("cluster:new_member", "1.2.3.4:60000", 1024)
+				require.Nil(t, err)
+				return b
+			},
+			inputCancelTimeout:    10,
+			inputResponseRecorder: NewResponseWriter(true),
+			inputRequest:          map[string]interface{}{},
+			expectedCode:          http.StatusInternalServerError,
+			expectedError:         "subscriber 1.2.3.4:60000 already exists",
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputPublishFunc: func(b *bus.Bus) {
+				time.Sleep(5 * time.Millisecond)
+				err := b.Publish("cluster:new_member", make(chan int))
+				require.Nil(t, err)
+			},
+			inputCancelTimeout:    50,
+			inputResponseRecorder: NewResponseWriter(true),
+			expectedCode:          http.StatusOK,
+		},
+		{
+			inputBusFunc: func() *bus.Bus {
+				b := bus.New()
+				return b
+			},
+			inputCancelTimeout:    50,
+			inputResponseRecorder: NewResponseWriter(false),
+			inputRequest:          map[string]interface{}{},
+			expectedCode:          http.StatusInternalServerError,
+			expectedError:         "streaming not supported",
+		},
+	}
+	sseKeepalive = 3
+
+	for _, test := range tests {
+		evBus := test.inputBusFunc()
+		handler := sseHandler(evBus)
+
+		body, _ := json.Marshal(test.inputRequest)
+
+		ctx, reqCtxCancel := context.WithCancel(context.Background())
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "/api/sse", bytes.NewReader(body))
+		require.Nil(t, err)
+
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "1.2.3.4:60000"
+
+		w := test.inputResponseRecorder
+
+		go func() {
+			time.Sleep(time.Duration(test.inputCancelTimeout) * time.Millisecond)
+			reqCtxCancel()
+		}()
+		if test.inputPublishFunc != nil {
+			go test.inputPublishFunc(evBus)
+		}
+		handler(w, req)
+
+		require.Equal(t, test.expectedCode, w.Code())
+
+		res := w.Result()
+		defer res.Body.Close()
+
+		if w.Code() != http.StatusOK {
+			resp := make(map[string]string)
+			unmarshalBody(res.Body, &resp)
+
+			if test.expectedError != "" {
+				require.Equal(t, test.expectedError, resp["error"])
+			}
+		}
+		b, err := io.ReadAll(res.Body)
+		require.Nil(t, err)
+		for _, expectedBody := range test.expectedBody {
+			require.Contains(t, string(b), expectedBody)
+		}
+	}
+}
 
 func TestDiscoveryMembersHandler(t *testing.T) {
 	mlConfig := memberlist.DefaultLocalConfig()
@@ -26,14 +293,16 @@ func TestDiscoveryMembersHandler(t *testing.T) {
 	mlConfig.AdvertisePort = 7946
 	mlConfig.LogOutput = ioutil.Discard
 
-	disco, _, err := discovery.New(&discovery.Options{
+	evBus := bus.New()
+	disco, ctxCancel, err := discovery.New(&discovery.Options{
 		Domain:           "test",
 		MemberListConfig: mlConfig,
+		Bus:              evBus,
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024},
 	})
-	if err != nil {
-		t.Fatalf("discovery.New error: %s", err)
-	}
+	require.Nil(t, err)
 	defer disco.Shutdown()
+	defer ctxCancel()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/discovery/members", nil)
 	handler := discoveryMembersHandler(disco)
@@ -52,10 +321,22 @@ func TestDiscoveryMembersHandler(t *testing.T) {
 }
 
 func TestMqttClientsHandler(t *testing.T) {
-	mqttServer := newMqttBroker()
-	defer mqttServer.Close()
+	evBus := bus.New()
+	b, ctxCancel, err := broker.New(&broker.Options{
+		MQTTPort:         1883,
+		Bus:              evBus,
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
+	})
+	require.Nil(t, err)
+	defer b.Shutdown()
+	defer ctxCancel()
 
-	mqttConnOpts := paho.NewClientOptions().AddBroker("127.0.0.1:1883").SetAutoReconnect(false)
+	mqttConnOpts := paho.NewClientOptions().
+		AddBroker("127.0.0.1:1883").
+		SetAutoReconnect(false).
+		SetUsername("test").
+		SetPassword("test")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
@@ -64,21 +345,21 @@ func TestMqttClientsHandler(t *testing.T) {
 	defer mqttClient.Disconnect(1)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/mqtt/clients", nil)
-	handler := mqttClientsHandler(mqttServer)
+	handler := mqttClientsHandler(b)
 
 	w := httptest.NewRecorder()
 	handler(w, req)
 	res := w.Result()
 	defer res.Body.Close()
 
-	clients := make(map[string]interface{})
+	var clients []*broker.MQTTClient
 	unmarshalBody(res.Body, &clients)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, 1, len(clients))
-	for clientID, client := range clients {
-		c := client.(map[string]interface{})
-		require.Equal(t, clientID, c["ID"])
+	for _, client := range clients {
+		require.NotNil(t, client)
+		require.Equal(t, []byte("test"), client.Username)
 	}
 }
 
@@ -103,7 +384,7 @@ func TestMqttClientStopHandler(t *testing.T) {
 		},
 		{
 			inputRequest:       map[string]interface{}{"client_id": "missing"},
-			expectedCode:       http.StatusBadRequest,
+			expectedCode:       http.StatusInternalServerError,
 			expectedError:      "unknown client",
 			expectedClientDone: 0,
 		},
@@ -114,10 +395,23 @@ func TestMqttClientStopHandler(t *testing.T) {
 		},
 	}
 
-	mqttServer := newMqttBroker()
-	defer mqttServer.Close()
+	evBus := bus.New()
+	b, ctxCancel, err := broker.New(&broker.Options{
+		MQTTPort:         1883,
+		Bus:              evBus,
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
+	})
+	require.Nil(t, err)
+	defer b.Shutdown()
+	defer ctxCancel()
 
-	mqttConnOpts := paho.NewClientOptions().AddBroker("127.0.0.1:1883").SetAutoReconnect(false).SetClientID("TestMqttClientStopHandler")
+	mqttConnOpts := paho.NewClientOptions().
+		AddBroker("127.0.0.1:1883").
+		SetAutoReconnect(false).
+		SetUsername("test").
+		SetPassword("test").
+		SetClientID("TestMqttClientStopHandler")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
@@ -125,7 +419,7 @@ func TestMqttClientStopHandler(t *testing.T) {
 	}
 	defer mqttClient.Disconnect(1)
 
-	handler := mqttClientStopHandler(mqttServer)
+	handler := mqttClientStopHandler(b)
 
 	for _, test := range tests {
 		body, _ := json.Marshal(test.inputRequest)
@@ -148,11 +442,9 @@ func TestMqttClientStopHandler(t *testing.T) {
 			}
 		}
 
-		client, ok := mqttServer.Clients.Get("TestMqttClientStopHandler")
-		if !ok {
-			t.Fatalf("mqttServer.Clients.Get client missing")
-		}
-		require.Equal(t, test.expectedClientDone, client.State.Done)
+		client, err := b.Client("TestMqttClientStopHandler")
+		require.Nil(t, err)
+		require.Equal(t, test.expectedClientDone, client.Done)
 	}
 }
 
@@ -175,7 +467,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 		},
 		{
 			inputRequest:  map[string]interface{}{"client_id": "missing"},
-			expectedCode:  http.StatusBadRequest,
+			expectedCode:  http.StatusInternalServerError,
 			expectedError: "unknown client",
 		},
 		{
@@ -185,10 +477,23 @@ func TestMqttClientInflightHandler(t *testing.T) {
 		},
 	}
 
-	mqttServer := newMqttBroker()
-	defer mqttServer.Close()
+	evBus := bus.New()
+	b, ctxCancel, err := broker.New(&broker.Options{
+		MQTTPort:         1883,
+		Bus:              evBus,
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
+	})
+	require.Nil(t, err)
+	defer b.Shutdown()
+	defer ctxCancel()
 
-	mqttConnOpts := paho.NewClientOptions().AddBroker("127.0.0.1:1883").SetAutoReconnect(false).SetClientID("TestMqttClientInflightHandler")
+	mqttConnOpts := paho.NewClientOptions().
+		AddBroker("127.0.0.1:1883").
+		SetAutoReconnect(false).
+		SetUsername("test").
+		SetPassword("test").
+		SetClientID("TestMqttClientInflightHandler")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
@@ -197,12 +502,19 @@ func TestMqttClientInflightHandler(t *testing.T) {
 	if token := mqttClient.Subscribe("TestMqttClientInflightHandler", byte(2), nil); token.Wait() && token.Error() != nil {
 		t.Fatalf("mqttClient.Subscribe error: %s", token.Error())
 	}
-	mqttClient.Disconnect(10)
-	if err := mqttServer.Publish("TestMqttClientInflightHandler", []byte("test"), true); err != nil {
-		t.Fatalf("mqttServer.Publish error: %s", err)
-	}
 
-	handler := mqttClientInflightHandler(mqttServer)
+	mqttClient.Disconnect(10)
+	time.Sleep(50 * time.Millisecond)
+
+	evBus.Publish("cluster:message_from", types.MQTTPublishMessage{
+		Topic:   "TestMqttClientInflightHandler",
+		Payload: []byte("test"),
+		Retain:  true,
+	})
+
+	handler := mqttClientInflightHandler(b)
+
+	time.Sleep(100 * time.Millisecond)
 
 	for _, test := range tests {
 		body, _ := json.Marshal(test.inputRequest)
@@ -225,7 +537,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 				require.Equal(t, test.expectedError, resp["error"])
 			}
 		} else {
-			resp := make(map[uint16]interface{})
+			var resp []*types.MQTTPublishMessage
 			unmarshalBody(res.Body, &resp)
 			require.Equal(t, test.expectedInflight, len(resp))
 		}
@@ -260,15 +572,24 @@ func TestMqttTopicMessagesHandler(t *testing.T) {
 			expectedMessages: 1,
 		},
 	}
+	evBus := bus.New()
+	b, ctxCancel, err := broker.New(&broker.Options{
+		MQTTPort:         1883,
+		Bus:              evBus,
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
+	})
+	require.Nil(t, err)
+	defer b.Shutdown()
+	defer ctxCancel()
 
-	mqttServer := newMqttBroker()
-	defer mqttServer.Close()
+	evBus.Publish("cluster:message_from", types.MQTTPublishMessage{
+		Topic:   "TestMqttTopicMessagesHandler",
+		Payload: []byte("test"),
+		Retain:  true,
+	})
 
-	if err := mqttServer.Publish("TestMqttTopicMessagesHandler", []byte("test"), true); err != nil {
-		t.Fatalf("mqttServer.Publish error: %s", err)
-	}
-
-	handler := mqttTopicMessagesHandler(mqttServer)
+	handler := mqttTopicMessagesHandler(b)
 
 	for _, test := range tests {
 		body, _ := json.Marshal(test.inputRequest)
@@ -291,7 +612,7 @@ func TestMqttTopicMessagesHandler(t *testing.T) {
 				require.Equal(t, test.expectedError, resp["error"])
 			}
 		} else {
-			resp := make([]interface{}, 5)
+			var resp []*types.MQTTPublishMessage
 			unmarshalBody(res.Body, &resp)
 			require.Equal(t, test.expectedMessages, len(resp))
 		}
@@ -327,10 +648,23 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 		},
 	}
 
-	mqttServer := newMqttBroker()
-	defer mqttServer.Close()
+	evBus := bus.New()
+	b, ctxCancel, err := broker.New(&broker.Options{
+		MQTTPort:         1883,
+		Bus:              evBus,
+		AuthUsers:        map[string]string{"test": "test"},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
+	})
+	require.Nil(t, err)
+	defer b.Shutdown()
+	defer ctxCancel()
 
-	mqttConnOpts := paho.NewClientOptions().AddBroker("127.0.0.1:1883").SetAutoReconnect(false).SetClientID("TestMqttTopicSubscribersHandler")
+	mqttConnOpts := paho.NewClientOptions().
+		AddBroker("127.0.0.1:1883").
+		SetAutoReconnect(false).
+		SetUsername("test").
+		SetPassword("test").
+		SetClientID("TestMqttTopicSubscribersHandler")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
@@ -341,7 +675,7 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 	}
 	defer mqttClient.Disconnect(1)
 
-	handler := mqttTopicSubscribersHandler(mqttServer)
+	handler := mqttTopicSubscribersHandler(b)
 
 	for _, test := range tests {
 		body, _ := json.Marshal(test.inputRequest)
@@ -364,7 +698,7 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 				require.Equal(t, test.expectedError, resp["error"])
 			}
 		} else {
-			resp := make(map[string]interface{})
+			var resp map[string]byte
 			unmarshalBody(res.Body, &resp)
 			require.Equal(t, test.expectedSubscribers, len(resp))
 		}
@@ -383,15 +717,75 @@ func unmarshalBody(body io.Reader, destination interface{}) interface{} {
 	return destination
 }
 
-func newMqttBroker() *mqtt.Server {
-	mqttServer := mqtt.NewServer(nil)
-	if err := mqttServer.AddListener(listeners.NewTCP("tcp", ":1883"), nil); err != nil {
-		panic(fmt.Sprintf("mqttServer.AddListener error: %s", err))
+type ResponseWriter interface {
+	http.ResponseWriter
+	Code() int
+	Result() *http.Response
+}
+
+func NewResponseWriter(asFlusher bool) ResponseWriter {
+	if asFlusher {
+		return &testResponseRecorderFlusher{Recorder: httptest.NewRecorder()}
 	}
-	go func() {
-		if err := mqttServer.Serve(); err != nil {
-			panic(fmt.Sprintf("mqttServer.Serve worker died: %s", err))
-		}
-	}()
-	return mqttServer
+	return &testResponseRecorderWithoutFlush{Recorder: httptest.NewRecorder()}
+}
+
+type testResponseRecorderWithoutFlush struct {
+	Recorder *httptest.ResponseRecorder
+}
+
+func (w *testResponseRecorderWithoutFlush) Code() int {
+	return w.Recorder.Code
+}
+
+func (w *testResponseRecorderWithoutFlush) Result() *http.Response {
+	return w.Recorder.Result()
+}
+
+func (w *testResponseRecorderWithoutFlush) Header() http.Header {
+	return w.Recorder.Header()
+}
+
+func (w *testResponseRecorderWithoutFlush) WriteHeader(status int) {
+	w.Recorder.WriteHeader(status)
+}
+
+func (w *testResponseRecorderWithoutFlush) Write(b []byte) (int, error) {
+	return w.Recorder.Write(b)
+}
+
+func (w *testResponseRecorderWithoutFlush) ReadFrom(r io.Reader) (n int64, err error) {
+	return io.Copy(w.Recorder, r)
+}
+
+type testResponseRecorderFlusher struct {
+	Recorder *httptest.ResponseRecorder
+}
+
+func (w *testResponseRecorderFlusher) Code() int {
+	return w.Recorder.Code
+}
+
+func (w *testResponseRecorderFlusher) Result() *http.Response {
+	return w.Recorder.Result()
+}
+
+func (w *testResponseRecorderFlusher) Header() http.Header {
+	return w.Recorder.Header()
+}
+
+func (w *testResponseRecorderFlusher) WriteHeader(status int) {
+	w.Recorder.WriteHeader(status)
+}
+
+func (w *testResponseRecorderFlusher) Write(b []byte) (int, error) {
+	return w.Recorder.Write(b)
+}
+
+func (w *testResponseRecorderFlusher) ReadFrom(r io.Reader) (n int64, err error) {
+	return io.Copy(w.Recorder, r)
+}
+
+func (w *testResponseRecorderFlusher) Flush() {
+	w.Recorder.Flush()
 }

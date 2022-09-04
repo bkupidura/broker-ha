@@ -8,6 +8,7 @@ import (
 
 	"brokerha/internal/api"
 	"brokerha/internal/broker"
+	"brokerha/internal/bus"
 	"brokerha/internal/discovery"
 	"brokerha/internal/metric"
 )
@@ -41,9 +42,16 @@ func main() {
 		log.Fatal("cluster.config is nil")
 	}
 
-	disco, _, err := discovery.New(&discovery.Options{
+	evBus := bus.New()
+
+	subscriptionSize := make(map[string]int)
+	config.UnmarshalKey("discovery.subscription_size", &subscriptionSize)
+
+	d, _, err := discovery.New(&discovery.Options{
 		Domain:           config.GetString("discovery.domain"),
 		MemberListConfig: createMemberlistConfig(subMLConfig),
+		Bus:              evBus,
+		SubscriptionSize: subscriptionSize,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -52,23 +60,28 @@ func main() {
 	mqttUserACL := make(map[string][]broker.ACL)
 	config.UnmarshalKey("mqtt.acl", &mqttUserACL)
 
-	mqttServer, _, err := broker.New(&broker.Options{
-		MQTTPort:  config.GetInt("mqtt.port"),
-		AuthUsers: config.GetStringMapString("mqtt.user"),
-		AuthACL:   mqttUserACL,
+	config.UnmarshalKey("mqtt.subscription_size", &subscriptionSize)
+
+	b, _, err := broker.New(&broker.Options{
+		MQTTPort:         config.GetInt("mqtt.port"),
+		AuthUsers:        config.GetStringMapString("mqtt.user"),
+		AuthACL:          mqttUserACL,
+		Bus:              evBus,
+		SubscriptionSize: subscriptionSize,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	metric.Initialize(&metric.Options{
-		Discovery: disco,
-		Broker:    mqttServer,
+		Discovery: d,
+		Broker:    b,
 	})
 
 	httpRouter := api.NewRouter(&api.Options{
-		Discovery:              disco,
-		Broker:                 mqttServer,
+		Discovery:              d,
+		Broker:                 b,
+		Bus:                    evBus,
 		ClusterExpectedMembers: config.GetInt("cluster.expected_members"),
 		AuthUsers:              config.GetStringMapString("api.user"),
 	})
@@ -82,7 +95,7 @@ func main() {
 		log.Fatal(http.ListenAndServe(":8080", httpRouter))
 	}()
 
-	if err := disco.FormCluster(minInitSleep, maxInitSleep); err != nil {
+	if err := d.FormCluster(minInitSleep, maxInitSleep); err != nil {
 		log.Fatal(err)
 	}
 

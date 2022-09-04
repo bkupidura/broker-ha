@@ -12,24 +12,18 @@ import (
 	"time"
 
 	"github.com/hashicorp/memberlist"
+
+	"brokerha/internal/bus"
+	"brokerha/internal/types"
 )
 
 var (
 	// Defines allowed message types received from cluster.
 	queueDataTypes = map[string]byte{"MQTTPublish": 1}
-	// MQTTPublishFromCluster is used to push data received from memberlist cluster.
-	// It is consumed by mqtt_server.
-	MQTTPublishFromCluster = make(chan *MQTTPublishMessage, 1024)
-	// MQTTPublishToCluster is used to push data received from mqtt_server.
-	// It is consumed by discovery (memberlist).
-	MQTTPublishToCluster = make(chan *MQTTPublishMessage, 1024)
 	// How many messages we should try to send over single memberlist.SendReliable.
 	// Openning TCP session is expensive, lets try to open single session for multiple messages.
 	// If there is only one message in MQTTPublishToCluster we will not wait for more.
 	mergePublishToCluster = 25
-	// MQTTSendRetained is used when new node join cluster.
-	// It is consumed by mqtt_server.
-	MQTTSendRetained = make(chan *memberlist.Node, 10)
 	// How many times SendReliabe should be retried in case of error.
 	sendRetries = 3
 
@@ -41,17 +35,6 @@ var (
 	memberlistCreate  = memberlist.Create
 )
 
-// MQTTPublishMessage is storing data for MQTTPublishFromCluster and MQTTPublishToCluster.
-// Basicly its MQTT message + list of nodes to which message is addressed.
-// When Node is empty, message will be send to every node in cluster (except self).
-type MQTTPublishMessage struct {
-	Node    []string
-	Payload []byte
-	Topic   string
-	Retain  bool
-	Qos     byte
-}
-
 // Discovery is DNS member discovery and abstraction over memberlist.
 // It should be created by New().
 type Discovery struct {
@@ -59,6 +42,59 @@ type Discovery struct {
 	selfAddress map[string]struct{}
 	config      *memberlist.Config
 	ml          *memberlist.Memberlist
+	bus         *bus.Bus
+}
+
+// New creates new discovery instance.
+func New(opts *Options) (*Discovery, context.CancelFunc, error) {
+	d := &Discovery{
+		domain:      opts.Domain,
+		config:      opts.MemberListConfig,
+		selfAddress: make(map[string]struct{}),
+		bus:         opts.Bus,
+	}
+
+	localIPs, err := getLocalIPs()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for _, lip := range localIPs {
+		d.selfAddress[fmt.Sprintf("%s:%d", lip.String(), d.config.BindPort)] = struct{}{}
+	}
+
+	d.config.LogOutput = ioutil.Discard
+	d.config.Events = &delegateEvent{
+		selfAddress: d.selfAddress,
+		bus:         d.bus,
+	}
+	d.config.Delegate = &delegate{
+		bus: d.bus,
+	}
+
+	toClusterSize, ok := opts.SubscriptionSize["cluster:message_to"]
+	if !ok {
+		return nil, nil, fmt.Errorf("subscription size for cluster:message_to not provided")
+	}
+
+	chToCluster, err := d.bus.Subscribe("cluster:message_to", "discovery", toClusterSize)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ml, err := memberlistCreate(d.config)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	d.ml = ml
+
+	// ctx is used only by tests.
+	ctx, ctxCancel := context.WithCancel(context.Background())
+
+	go d.publishToCluster(ctx, chToCluster)
+
+	return d, ctxCancel, nil
 }
 
 // Shutdown memberlist connection. It will drop node from cluster.
@@ -163,81 +199,36 @@ func (d *Discovery) FormCluster(minInitSleep, maxInitSleep int) error {
 	return nil
 }
 
-// New creates new discovery instance.
-func New(opts *Options) (*Discovery, context.CancelFunc, error) {
-	d := &Discovery{
-		domain:      opts.Domain,
-		config:      opts.MemberListConfig,
-		selfAddress: make(map[string]struct{}),
-	}
-
-	localIPs, err := getLocalIPs()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	for _, lip := range localIPs {
-		d.selfAddress[fmt.Sprintf("%s:%d", lip.String(), d.config.BindPort)] = struct{}{}
-	}
-
-	d.config.LogOutput = ioutil.Discard
-	d.config.Events = &delegateEvent{
-		selfAddress: d.selfAddress,
-	}
-	d.config.Delegate = &delegate{}
-
-	ml, err := memberlistCreate(d.config)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	d.ml = ml
-
-	// ctx is used only by tests.
-	ctx, ctxCancel := context.WithCancel(context.Background())
-	go handleMQTTPublishToCluster(ctx, d)
-
-	return d, ctxCancel, nil
-}
-
-func populatePublishBatch(publishBatch map[string][]*MQTTPublishMessage, message *MQTTPublishMessage) {
-	if len(message.Node) == 0 {
-		message.Node = []string{"all"}
-	}
-	for _, member := range message.Node {
-		publishBatch[member] = append(publishBatch[member], message)
-	}
-}
-
-// handleMQTTPublishToCluster will get messages from MQTTPublishToCluster and send them with memberlist to other members.
-// When MQTTPublishToCluster.Node is empty, message will be send to all nodes (except self).
+// publishToCluster will get messages from bus and send them with memberlist to other members.
+// When message.Node is empty, message will be send to all nodes (except self).
 // Otherwise message will be send only to specific members.
 //
-// It will try to fetch mergePublishToCluster number of messages from MQTTPublishToCluster.
+// It will try to fetch mergePublishToCluster number of messages from toClusterQueue.
 // Openning TCP session for every single message is expensive, so lets try to send as much messages as we can.
-// When there is no more messages in MQTTPublishToCluster, we will send what we get and dont wait.
-// []*MQTTPublishMessage is send.
-func handleMQTTPublishToCluster(ctx context.Context, disco *Discovery) {
-	log.Printf("starting MQTTPublishToCluster queue worker")
+// When there is no more messages in bus, we will send what we get and dont wait.
+func (d *Discovery) publishToCluster(ctx context.Context, ch chan bus.Event) {
+	log.Printf("starting publishToCluster worker")
 
 	for {
-		mqttPublishBatch := map[string][]*MQTTPublishMessage{}
+		mqttPublishBatch := map[string][]types.DiscoveryPublishMessage{}
 		select {
-		case message := <-MQTTPublishToCluster:
+		case event := <-ch:
+			message := event.Data.(types.DiscoveryPublishMessage)
 			populatePublishBatch(mqttPublishBatch, message)
 
 		fetchMultiple:
 			for i := 0; i < mergePublishToCluster; i++ {
 				select {
-				case message := <-MQTTPublishToCluster:
+				case event := <-ch:
+					message := event.Data.(types.DiscoveryPublishMessage)
 					populatePublishBatch(mqttPublishBatch, message)
 				default:
 					break fetchMultiple
 				}
 			}
 
-			for _, member := range disco.Members(false) {
-				var messagesForMember []*MQTTPublishMessage
+			for _, member := range d.Members(false) {
+				var messagesForMember []types.DiscoveryPublishMessage
 				if messagesForAll, ok := mqttPublishBatch["all"]; ok {
 					messagesForMember = messagesForAll
 				}
@@ -252,7 +243,7 @@ func handleMQTTPublishToCluster(ctx context.Context, disco *Discovery) {
 					}
 					go func(m *memberlist.Node, data []byte) {
 						for retries := 1; retries <= sendRetries; retries++ {
-							if err := disco.SendReliable(m, "MQTTPublish", data); err != nil {
+							if err := d.SendReliable(m, "MQTTPublish", data); err != nil {
 								log.Printf("unable to publish message to cluster member %s (retries %d/%d): %s", m.Address(), retries, sendRetries, err)
 								time.Sleep(time.Duration(retries*10) * time.Millisecond)
 								continue
@@ -263,9 +254,19 @@ func handleMQTTPublishToCluster(ctx context.Context, disco *Discovery) {
 				}
 			}
 		case <-ctx.Done():
-			log.Printf("MQTTPublishToCluster queue worker done")
+			log.Printf("publishToCluster worker done")
 			return
 		}
+	}
+}
+
+// populatePublishBatch will prepare map[string][]*MQTTPublishMessage before sending it to cluster.
+func populatePublishBatch(publishBatch map[string][]types.DiscoveryPublishMessage, message types.DiscoveryPublishMessage) {
+	if len(message.Node) == 0 {
+		message.Node = []string{"all"}
+	}
+	for _, member := range message.Node {
+		publishBatch[member] = append(publishBatch[member], message)
 	}
 }
 

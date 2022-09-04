@@ -8,6 +8,9 @@ import (
 
 	"github.com/hashicorp/memberlist"
 	"github.com/stretchr/testify/require"
+
+	"brokerha/internal/bus"
+	"brokerha/internal/types"
 )
 
 func TestDelegateNodeMeta(t *testing.T) {
@@ -19,7 +22,7 @@ func TestDelegateNotifyMsg(t *testing.T) {
 	tests := []struct {
 		inputMessage    []byte
 		expectedLog     string
-		expectedMessage []*MQTTPublishMessage
+		expectedMessage []types.MQTTPublishMessage
 	}{
 		{
 			inputMessage: []byte{},
@@ -37,7 +40,7 @@ func TestDelegateNotifyMsg(t *testing.T) {
 				[]byte{queueDataTypes["MQTTPublish"]},
 				[]byte(`[{"Payload": "dGVzdA==", "Topic": "test", "Retain": true, "Qos": 2}]`)...,
 			),
-			expectedMessage: []*MQTTPublishMessage{
+			expectedMessage: []types.MQTTPublishMessage{
 				{
 					Payload: []byte("test"),
 					Topic:   "test",
@@ -51,7 +54,7 @@ func TestDelegateNotifyMsg(t *testing.T) {
 				[]byte{queueDataTypes["MQTTPublish"]},
 				[]byte(`[{"Payload": "dGVzdA==", "Topic": "test", "Retain": false, "Qos": 0}, {"Payload": "dGVzdDI=", "Topic": "test2", "Retain": false, "Qos": 1}, {"Payload": "dGVzdDM=", "Topic": "test3", "Retain": true, "Qos": 2}]`)...,
 			),
-			expectedMessage: []*MQTTPublishMessage{
+			expectedMessage: []types.MQTTPublishMessage{
 				{
 					Payload: []byte("test"),
 					Topic:   "test",
@@ -77,7 +80,14 @@ func TestDelegateNotifyMsg(t *testing.T) {
 	log.SetFlags(0)
 	var logOutput bytes.Buffer
 	log.SetOutput(&logOutput)
-	d := &delegate{}
+
+	evBus := bus.New()
+	d := &delegate{
+		bus: evBus,
+	}
+
+	ch, err := evBus.Subscribe("cluster:message_from", "TestDelegateNotifyMsg", 1024)
+	require.Nil(t, err)
 
 	for _, test := range tests {
 		logOutput.Reset()
@@ -87,8 +97,9 @@ func TestDelegateNotifyMsg(t *testing.T) {
 
 		if test.expectedMessage != nil {
 			for _, expectedMessage := range test.expectedMessage {
-				rm := <-MQTTPublishFromCluster
-				require.Equal(t, expectedMessage, rm)
+				e := <-ch
+				receivedMessage := e.Data.(types.MQTTPublishMessage)
+				require.Equal(t, expectedMessage, receivedMessage)
 			}
 		}
 	}
@@ -113,36 +124,43 @@ func TestDelegateEventNotifyJoin(t *testing.T) {
 	tests := []struct {
 		inputMemberIP   net.IP
 		expectedLog     string
-		expectedMessage *memberlist.Node
+		expectedMessage string
 	}{
 		{
 			inputMemberIP: net.ParseIP("127.0.0.1"),
-			expectedLog:   "",
 		},
 		{
 			inputMemberIP:   net.ParseIP("1.2.3.4"),
-			expectedLog:     "new cluster member 1.2.3.4:7946\nsending retained messages to 1.2.3.4:7946\n",
-			expectedMessage: &memberlist.Node{Addr: net.ParseIP("1.2.3.4"), Port: 7946},
+			expectedLog:     "new cluster member 1.2.3.4:7946\n",
+			expectedMessage: "1.2.3.4:7946",
 		},
 	}
 	log.SetFlags(0)
 	var logOutput bytes.Buffer
 	log.SetOutput(&logOutput)
 
+	evBus := bus.New()
+
 	d := &delegateEvent{
 		selfAddress: map[string]struct{}{
 			"127.0.0.1:7946": {},
 		},
+		bus: evBus,
 	}
+
+	ch, err := evBus.Subscribe("cluster:new_member", "TestDelegateEventNotifyJoin", 10)
+	require.Nil(t, err)
+
 	for _, test := range tests {
 		logOutput.Reset()
 
 		d.NotifyJoin(&memberlist.Node{Addr: test.inputMemberIP, Port: 7946})
 		require.Equal(t, test.expectedLog, logOutput.String())
 
-		if test.expectedMessage != nil {
-			rm := <-MQTTSendRetained
-			require.Equal(t, test.expectedMessage, rm)
+		if test.expectedMessage != "" {
+			e := <-ch
+			receivedMessage := e.Data.(string)
+			require.Equal(t, test.expectedMessage, receivedMessage)
 		}
 	}
 }
