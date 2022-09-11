@@ -53,11 +53,11 @@ mqtt:
     admin: admin
   acl:
     admin:
-      action: "allow"
-      prefix: ""
+      - action: "allow"
+        prefix: ""
     default:
-      action: "deny"
-      prefix: "/restricted"
+      - action: "deny"
+        prefix: "/restricted"
 cluster:
   expected_members: 3
   config:

@@ -65,9 +65,6 @@ func TestACL(t *testing.T) {
 				"test": {
 					{Action: "deny", Prefix: "test"},
 				},
-				"default": {
-					{Action: "allow", Prefix: "test"},
-				},
 			},
 			expectedResult: false,
 		},
@@ -75,8 +72,21 @@ func TestACL(t *testing.T) {
 			user:  "test",
 			topic: "test",
 			acl: map[string][]ACL{
-				"default": {
+				"test": {
+					{Action: "allow", Prefix: "test"},
+				},
+			},
+			expectedResult: true,
+		},
+		{
+			user:  "test",
+			topic: "test",
+			acl: map[string][]ACL{
+				"test": {
 					{Action: "deny", Prefix: "test"},
+				},
+				"default": {
+					{Action: "allow", Prefix: "test"},
 				},
 			},
 			expectedResult: false,
@@ -98,14 +108,47 @@ func TestACL(t *testing.T) {
 			user:  "test",
 			topic: "test",
 			acl: map[string][]ACL{
-				"test": {
-					{Action: "allow", Prefix: ""},
+				"user": {
+					{Action: "allow", Prefix: "test"},
 				},
 				"default": {
 					{Action: "deny", Prefix: "test"},
 				},
 			},
+			expectedResult: false,
+		},
+		{
+			user:  "test",
+			topic: "test",
+			acl: map[string][]ACL{
+				"user": {
+					{Action: "deny", Prefix: "test"},
+				},
+				"default": {
+					{Action: "allow", Prefix: "test"},
+				},
+			},
 			expectedResult: true,
+		},
+		{
+			user:  "test",
+			topic: "test",
+			acl: map[string][]ACL{
+				"default": {
+					{Action: "allow", Prefix: "test"},
+				},
+			},
+			expectedResult: true,
+		},
+		{
+			user:  "test",
+			topic: "test",
+			acl: map[string][]ACL{
+				"default": {
+					{Action: "deny", Prefix: "test"},
+				},
+			},
+			expectedResult: false,
 		},
 		{
 			user:           "test",
@@ -150,9 +193,34 @@ func TestACLCheck(t *testing.T) {
 		},
 		{
 			user:  "test",
+			topic: "test/something/something",
+			acl: []ACL{
+				{Action: "deny", Prefix: ""},
+			},
+			expectedResult: false,
+		},
+		{
+			user:  "test",
+			topic: "test/something/something",
+			acl: []ACL{
+				{Action: "allow", Prefix: ""},
+			},
+			expectedResult: true,
+		},
+		{
+			user:  "test",
 			topic: "something/",
 			acl: []ACL{
-				{Action: "deny", Prefix: "test"},
+				{Action: "allow", Prefix: "test"},
+				{Action: "deny", Prefix: "something/"},
+			},
+			expectedResult: false,
+		},
+		{
+			user:  "test",
+			topic: "something",
+			acl: []ACL{
+				{Action: "allow", Prefix: "test"},
 				{Action: "deny", Prefix: "something/"},
 			},
 			expectedResult: false,
@@ -162,17 +230,8 @@ func TestACLCheck(t *testing.T) {
 			topic: "something",
 			acl: []ACL{
 				{Action: "deny", Prefix: "test"},
-				{Action: "deny", Prefix: "something/"},
 			},
-			expectedResult: true,
-		},
-		{
-			user:  "test",
-			topic: "something",
-			acl: []ACL{
-				{Action: "deny", Prefix: "test"},
-			},
-			expectedResult: true,
+			expectedResult: false,
 		},
 		{
 			user:  "test",
@@ -184,10 +243,19 @@ func TestACLCheck(t *testing.T) {
 			expectedResult: true,
 		},
 		{
+			user:  "test",
+			topic: "something/test",
+			acl: []ACL{
+				{Action: "deny", Prefix: "test"},
+				{Action: "allow", Prefix: "something"},
+			},
+			expectedResult: true,
+		},
+		{
 			user:           "test",
 			topic:          "test",
 			acl:            []ACL{},
-			expectedResult: true,
+			expectedResult: false,
 		},
 	}
 
