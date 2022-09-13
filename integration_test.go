@@ -89,7 +89,7 @@ func TestBrokerHA(t *testing.T) {
 
 	require.Equal(t, 2, joinedNodes)
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	// Broker can deliver messages in different order than sent.
 	expectedMessageUnordered := []string{
@@ -105,7 +105,7 @@ func TestBrokerHA(t *testing.T) {
 		t.Fatalf("mqttClient.Publish error: %s", token.Error())
 	}
 
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(30 * time.Millisecond)
 	expectedMessage := string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":"dGVzdF9tZXNzYWdlX3RocmVl","Topic":"to_cluster/topic_three","Retain":false,"Qos":1}]`)...))
 	require.Equal(t, expectedMessage, string(md1.GetData()))
 	require.Equal(t, expectedMessage, string(md2.GetData()))

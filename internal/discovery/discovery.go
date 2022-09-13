@@ -26,6 +26,8 @@ var (
 	mergePublishToCluster = 25
 	// How many times SendReliabe should be retried in case of error.
 	sendRetries = 3
+	// How long to wait between retries in milliseconds.
+	sendRetriesInterval = 100
 
 	// Mocks for tests.
 	netLookupSRV      = net.LookupSRV
@@ -245,7 +247,7 @@ func (d *Discovery) publishToCluster(ctx context.Context, ch chan bus.Event) {
 						for retries := 1; retries <= sendRetries; retries++ {
 							if err := d.SendReliable(m, "MQTTPublish", data); err != nil {
 								log.Printf("unable to publish message to cluster member %s (retries %d/%d): %s", m.Address(), retries, sendRetries, err)
-								time.Sleep(time.Duration(retries*10) * time.Millisecond)
+								time.Sleep(time.Duration(retries*sendRetriesInterval) * time.Millisecond)
 								continue
 							}
 							return

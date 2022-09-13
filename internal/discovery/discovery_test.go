@@ -733,7 +733,7 @@ func TestPublishToCluster(t *testing.T) {
 			evBus.Publish("cluster:message_to", m)
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 		require.Equal(t, test.expectedLog, logOutput.String())
 
 		if test.expectedData != "" {
