@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/render"
@@ -56,6 +58,35 @@ func unableToPerformError(err error) render.Renderer {
 		HTTPStatusCode: http.StatusInternalServerError,
 		StatusText:     "Unable to perform request.",
 		ErrorText:      err.Error(),
+	}
+}
+
+func proxyHandler(d *discovery.Discovery) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		c := &http.Client{}
+		mergedResponse := map[string]interface{}{}
+		for _, member := range d.Members(true) {
+			memberReq, err := http.NewRequest(r.Method, fmt.Sprintf("http://%s:8080%s", member.Addr.String(), strings.TrimPrefix(r.URL.Path, "/proxy")), r.Body)
+			if err != nil {
+				render.Render(w, r, invalidRequestError(err))
+				return
+			}
+			memberReq.Header = r.Header
+			memberRes, err := c.Do(memberReq)
+			if err != nil {
+				render.Render(w, r, invalidRequestError(err))
+				return
+			}
+			memberResBody, err := io.ReadAll(memberRes.Body)
+			if err != nil {
+				render.Render(w, r, invalidRequestError(err))
+				return
+			}
+			var data interface{}
+			json.Unmarshal(memberResBody, &data)
+			mergedResponse[member.Name] = data
+		}
+		render.JSON(w, r, mergedResponse)
 	}
 }
 

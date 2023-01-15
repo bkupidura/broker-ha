@@ -29,6 +29,12 @@ func NewRouter(opts *Options) *chi.Mux {
 		}
 		r.Use(middleware.Recoverer)
 
+		r.Get("/proxy/api/discovery/members", proxyHandler(opts.Discovery))
+		r.Get("/proxy/api/mqtt/clients", proxyHandler(opts.Discovery))
+		r.Post("/proxy/api/mqtt/client/inflight", proxyHandler(opts.Discovery))
+		r.Post("/proxy/api/mqtt/topic/messages", proxyHandler(opts.Discovery))
+		r.Post("/proxy/api/mqtt/topic/subscribers", proxyHandler(opts.Discovery))
+
 		r.Post("/api/sse", sseHandler(opts.Bus))
 		r.Get("/api/discovery/members", discoveryMembersHandler(opts.Discovery))
 		r.Get("/api/mqtt/clients", mqttClientsHandler(opts.Broker))
