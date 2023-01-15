@@ -14,6 +14,8 @@ import (
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/hashicorp/memberlist"
+	"github.com/mochi-co/mqtt/v2"
+	"github.com/mochi-co/mqtt/v2/packets"
 	"github.com/stretchr/testify/require"
 
 	"brokerha/internal/broker"
@@ -349,7 +351,6 @@ func TestMqttClientsHandler(t *testing.T) {
 	b, ctxCancel, err := broker.New(&broker.Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		AuthUsers:        map[string]string{"test": "test"},
 		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
@@ -358,9 +359,8 @@ func TestMqttClientsHandler(t *testing.T) {
 
 	mqttConnOpts := paho.NewClientOptions().
 		AddBroker("127.0.0.1:1883").
-		SetAutoReconnect(false).
-		SetUsername("test").
-		SetPassword("test")
+		SetClientID("TestMqttClientsHandler").
+		SetAutoReconnect(false)
 
 	mqttClient := paho.NewClient(mqttConnOpts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
@@ -383,7 +383,7 @@ func TestMqttClientsHandler(t *testing.T) {
 	require.Equal(t, 1, len(clients))
 	for _, client := range clients {
 		require.NotNil(t, client)
-		require.Equal(t, []byte("test"), client.Username)
+		require.Equal(t, "TestMqttClientsHandler", client.ID)
 	}
 }
 
@@ -392,30 +392,30 @@ func TestMqttClientStopHandler(t *testing.T) {
 		inputRequest       map[string]interface{}
 		expectedCode       int
 		expectedError      string
-		expectedClientDone uint32
+		expectedClientDone bool
 	}{
 		{
 			inputRequest:       map[string]interface{}{},
 			expectedCode:       http.StatusBadRequest,
 			expectedError:      "client_id is required",
-			expectedClientDone: 0,
+			expectedClientDone: false,
 		},
 		{
 			inputRequest:       map[string]interface{}{"client_id": ""},
 			expectedCode:       http.StatusBadRequest,
 			expectedError:      "client_id is required",
-			expectedClientDone: 0,
+			expectedClientDone: false,
 		},
 		{
 			inputRequest:       map[string]interface{}{"client_id": "missing"},
 			expectedCode:       http.StatusInternalServerError,
 			expectedError:      "unknown client",
-			expectedClientDone: 0,
+			expectedClientDone: false,
 		},
 		{
 			inputRequest:       map[string]interface{}{"client_id": "TestMqttClientStopHandler"},
 			expectedCode:       http.StatusOK,
-			expectedClientDone: 1,
+			expectedClientDone: true,
 		},
 	}
 
@@ -423,7 +423,6 @@ func TestMqttClientStopHandler(t *testing.T) {
 	b, ctxCancel, err := broker.New(&broker.Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		AuthUsers:        map[string]string{"test": "test"},
 		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
@@ -433,8 +432,6 @@ func TestMqttClientStopHandler(t *testing.T) {
 	mqttConnOpts := paho.NewClientOptions().
 		AddBroker("127.0.0.1:1883").
 		SetAutoReconnect(false).
-		SetUsername("test").
-		SetPassword("test").
 		SetClientID("TestMqttClientStopHandler")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
@@ -505,7 +502,6 @@ func TestMqttClientInflightHandler(t *testing.T) {
 	b, ctxCancel, err := broker.New(&broker.Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		AuthUsers:        map[string]string{"test": "test"},
 		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
@@ -515,8 +511,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 	mqttConnOpts := paho.NewClientOptions().
 		AddBroker("127.0.0.1:1883").
 		SetAutoReconnect(false).
-		SetUsername("test").
-		SetPassword("test").
+		SetCleanSession(false).
 		SetClientID("TestMqttClientInflightHandler")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
@@ -534,6 +529,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 		Topic:   "TestMqttClientInflightHandler",
 		Payload: []byte("test"),
 		Retain:  true,
+		Qos:     2,
 	})
 
 	handler := mqttClientInflightHandler(b)
@@ -600,7 +596,6 @@ func TestMqttTopicMessagesHandler(t *testing.T) {
 	b, ctxCancel, err := broker.New(&broker.Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		AuthUsers:        map[string]string{"test": "test"},
 		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
@@ -648,7 +643,7 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 		inputRequest        map[string]interface{}
 		expectedCode        int
 		expectedError       string
-		expectedSubscribers int
+		expectedSubscribers *mqtt.Subscribers
 	}{
 		{
 			inputRequest:  map[string]interface{}{},
@@ -661,14 +656,30 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 			expectedError: "topic is required",
 		},
 		{
-			inputRequest:        map[string]interface{}{"topic": "missing"},
-			expectedCode:        http.StatusOK,
-			expectedSubscribers: 0,
+			inputRequest: map[string]interface{}{"topic": "missing"},
+			expectedCode: http.StatusOK,
+			expectedSubscribers: &mqtt.Subscribers{
+				Shared:         make(map[string]map[string]packets.Subscription),
+				SharedSelected: make(map[string]packets.Subscription),
+				Subscriptions:  make(map[string]packets.Subscription),
+			},
 		},
 		{
-			inputRequest:        map[string]interface{}{"topic": "TestMqttTopicSubscribersHandler"},
-			expectedCode:        http.StatusOK,
-			expectedSubscribers: 1,
+			inputRequest: map[string]interface{}{"topic": "TestMqttTopicSubscribersHandler"},
+			expectedCode: http.StatusOK,
+			expectedSubscribers: &mqtt.Subscribers{
+				Shared:         make(map[string]map[string]packets.Subscription),
+				SharedSelected: make(map[string]packets.Subscription),
+				Subscriptions: map[string]packets.Subscription{
+					"TestMqttTopicSubscribersHandler": {
+						Filter: "TestMqttTopicSubscribersHandler",
+						Identifiers: map[string]int{
+							"TestMqttTopicSubscribersHandler": 0,
+						},
+						Qos: 2,
+					},
+				},
+			},
 		},
 	}
 
@@ -676,7 +687,6 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 	b, ctxCancel, err := broker.New(&broker.Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		AuthUsers:        map[string]string{"test": "test"},
 		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
@@ -686,8 +696,6 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 	mqttConnOpts := paho.NewClientOptions().
 		AddBroker("127.0.0.1:1883").
 		SetAutoReconnect(false).
-		SetUsername("test").
-		SetPassword("test").
 		SetClientID("TestMqttTopicSubscribersHandler")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
@@ -722,9 +730,9 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 				require.Equal(t, test.expectedError, resp["error"])
 			}
 		} else {
-			var resp map[string]byte
+			var resp *mqtt.Subscribers
 			unmarshalBody(res.Body, &resp)
-			require.Equal(t, test.expectedSubscribers, len(resp))
+			require.Equal(t, test.expectedSubscribers, resp)
 		}
 	}
 }

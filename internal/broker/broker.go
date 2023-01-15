@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"log"
 
-	mqtt "github.com/mochi-co/mqtt/server"
-	"github.com/mochi-co/mqtt/server/events"
-	"github.com/mochi-co/mqtt/server/listeners"
-	"github.com/mochi-co/mqtt/server/system"
+	"github.com/mochi-co/mqtt/v2"
+	"github.com/mochi-co/mqtt/v2/hooks/auth"
+	"github.com/mochi-co/mqtt/v2/listeners"
+	"github.com/mochi-co/mqtt/v2/packets"
+	"github.com/mochi-co/mqtt/v2/system"
+	"github.com/rs/zerolog"
 
 	"brokerha/internal/bus"
 	"brokerha/internal/types"
@@ -17,11 +19,12 @@ import (
 
 // MQTTClient stores mqtt client details.
 type MQTTClient struct {
-	ID            string
-	Done          uint32
-	Username      []byte
-	Subscriptions map[string]byte
-	CleanSession  bool
+	ID              string
+	ProtocolVersion byte
+	Username        []byte
+	CleanSession    bool
+	Done            bool
+	Subscriptions   map[string]packets.Subscription
 }
 
 // Broker is abstraction over mqtt.Server.
@@ -51,27 +54,32 @@ func New(opts *Options) (*Broker, context.CancelFunc, error) {
 		return nil, nil, err
 	}
 
-	mqttServer := mqtt.NewServer(&mqtt.Options{
-		BufferSize:      0,
-		BufferBlockSize: 0,
-		InflightTTL:     60 * 5,
-	})
+	mqttServer := mqtt.New(&mqtt.Options{})
+	l := mqttServer.Log.Level(zerolog.Disabled)
+	mqttServer.Log = &l
 
-	listener := listeners.NewTCP("tcp", fmt.Sprintf(":%d", opts.MQTTPort))
-
-	var listenerConfig *listeners.Config
-	if len(opts.AuthUsers) > 0 {
-		listenerConfig = &listeners.Config{
-			Auth: &Auth{
-				Users:   opts.AuthUsers,
-				UserACL: opts.AuthACL,
+	if len(opts.Auth) > 0 {
+		if err := mqttServer.AddHook(new(auth.Hook), &auth.Options{
+			Ledger: &auth.Ledger{
+				Auth: opts.Auth,
+				ACL:  opts.ACL,
 			},
+		}); err != nil {
+			return nil, nil, err
 		}
 	} else {
-		listenerConfig = nil
+		log.Printf("auth for mqtt disabled")
+		if err := mqttServer.AddHook(new(auth.AllowHook), nil); err != nil {
+			return nil, nil, err
+		}
+	}
+	if err := mqttServer.AddHook(new(Hook), map[string]interface{}{"bus": opts.Bus}); err != nil {
+		return nil, nil, err
 	}
 
-	if err := mqttServer.AddListener(listener, listenerConfig); err != nil {
+	listener := listeners.NewTCP("tcp", fmt.Sprintf(":%d", opts.MQTTPort), nil)
+
+	if err := mqttServer.AddListener(listener); err != nil {
 		return nil, nil, err
 	}
 
@@ -85,8 +93,6 @@ func New(opts *Options) (*Broker, context.CancelFunc, error) {
 		server: mqttServer,
 		bus:    opts.Bus,
 	}
-
-	broker.server.Events.OnMessage = broker.onMessage
 
 	// ctx is used only by tests.
 	ctx, ctxCancel := context.WithCancel(context.Background())
@@ -106,7 +112,7 @@ func (b *Broker) Shutdown() error {
 
 // SystemInfo returns broker system info.
 func (b *Broker) SystemInfo() *system.Info {
-	return b.server.System
+	return b.server.Info
 }
 
 // Messages returns stored messages based on filter.
@@ -129,11 +135,12 @@ func (b *Broker) Clients() []*MQTTClient {
 	var clients []*MQTTClient
 	for _, c := range b.server.Clients.GetAll() {
 		clients = append(clients, &MQTTClient{
-			ID:            c.ID,
-			Done:          c.State.Done,
-			Username:      c.Username,
-			Subscriptions: c.Subscriptions,
-			CleanSession:  c.CleanSession,
+			ID:              c.ID,
+			ProtocolVersion: c.Properties.ProtocolVersion,
+			Username:        c.Properties.Username,
+			CleanSession:    c.Properties.Clean,
+			Done:            c.Closed(),
+			Subscriptions:   c.State.Subscriptions.GetAll(),
 		})
 	}
 	return clients
@@ -146,11 +153,12 @@ func (b *Broker) Client(clientID string) (*MQTTClient, error) {
 		return nil, errors.New("unknown client")
 	}
 	return &MQTTClient{
-		ID:            client.ID,
-		Done:          client.State.Done,
-		Username:      client.Username,
-		Subscriptions: client.Subscriptions,
-		CleanSession:  client.CleanSession,
+		ID:              client.ID,
+		ProtocolVersion: client.Properties.ProtocolVersion,
+		Username:        client.Properties.Username,
+		CleanSession:    client.Properties.Clean,
+		Done:            client.Closed(),
+		Subscriptions:   client.State.Subscriptions.GetAll(),
 	}, nil
 }
 
@@ -171,36 +179,20 @@ func (b *Broker) Inflights(clientID string) ([]*types.MQTTPublishMessage, error)
 	if !ok {
 		return nil, errors.New("unknown client")
 	}
-	for _, m := range client.Inflight.GetAll() {
+	for _, m := range client.State.Inflight.GetAll(false) {
 		messages = append(messages, &types.MQTTPublishMessage{
-			Payload: m.Packet.Payload,
-			Topic:   m.Packet.TopicName,
-			Retain:  m.Packet.FixedHeader.Retain,
-			Qos:     m.Packet.FixedHeader.Qos,
+			Payload: m.Payload,
+			Topic:   m.TopicName,
+			Retain:  m.FixedHeader.Retain,
+			Qos:     m.FixedHeader.Qos,
 		})
 	}
 	return messages, nil
 }
 
 // Subscribers returns clientIDs subscribed for topic.
-func (b *Broker) Subscribers(filter string) map[string]byte {
+func (b *Broker) Subscribers(filter string) *mqtt.Subscribers {
 	return b.server.Topics.Subscribers(filter)
-}
-
-// onMessage handler is executed when mqtt broker receives new message from clients.
-// Its not executed on mqttServer.Publish().
-// When new message is received, it will be send to bus and propagated across cluster members.
-func (b *Broker) onMessage(cl events.Client, pk events.Packet) (pkx events.Packet, err error) {
-	message := types.DiscoveryPublishMessage{
-		Payload: pk.Payload,
-		Topic:   pk.TopicName,
-		Retain:  pk.FixedHeader.Retain,
-		Qos:     pk.FixedHeader.Qos,
-		Node:    []string{"all"},
-	}
-	b.bus.Publish("cluster:message_to", message)
-
-	return pk, nil
 }
 
 // publishToMQTT will receive messages from discovery (memberlist), and publish them to local mqtt server.
@@ -210,7 +202,7 @@ func (b *Broker) publishToMQTT(ctx context.Context, ch chan bus.Event) {
 		select {
 		case event := <-ch:
 			message := event.Data.(types.MQTTPublishMessage)
-			if err := b.server.Publish(message.Topic, message.Payload, message.Retain); err != nil {
+			if err := b.server.Publish(message.Topic, message.Payload, message.Retain, message.Qos); err != nil {
 				log.Printf("unable to publish message from cluster %v: %s", message, err)
 			}
 		case <-ctx.Done():

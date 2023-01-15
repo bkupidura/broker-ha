@@ -43,18 +43,6 @@ var (
 		Name: "broker_messages_sent",
 		Help: "Total number of sent messages",
 	})
-	publishDropped = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "broker_publish_dropped",
-		Help: "Number of in-flight publish messages which were dropped",
-	})
-	publishRecv = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "broker_publish_recv",
-		Help: "Total number of received publish packets",
-	})
-	publishSent = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "broker_publish_sent",
-		Help: "Total number of sent publish packets",
-	})
 	inflight = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "broker_inflight_messages",
 		Help: "Number of in-flight messages",
@@ -71,9 +59,6 @@ func Initialize(opts *Options) {
 	prometheus.MustRegister(brokerUptime)
 	prometheus.MustRegister(messagesRecv)
 	prometheus.MustRegister(messagesSent)
-	prometheus.MustRegister(publishDropped)
-	prometheus.MustRegister(publishRecv)
-	prometheus.MustRegister(publishSent)
 	prometheus.MustRegister(inflight)
 
 	go collect(opts.Discovery, opts.Broker)
@@ -85,15 +70,12 @@ func collect(disco *discovery.Discovery, broker *broker.Broker) {
 	for {
 		clusterMembers.Set(float64(len(disco.Members(true))))
 		clusterMemberHealth.Set(float64(disco.GetHealthScore()))
-		retainedMessages.Set(float64(len(broker.Messages("#"))))
+		retainedMessages.Set(float64(broker.SystemInfo().Retained))
 		subscriptions.Set(float64(broker.SystemInfo().Subscriptions))
 		clientsConnected.Set(float64(broker.SystemInfo().ClientsConnected))
 		brokerUptime.Set(float64(broker.SystemInfo().Uptime))
-		messagesRecv.Set(float64(broker.SystemInfo().MessagesRecv))
+		messagesRecv.Set(float64(broker.SystemInfo().MessagesReceived))
 		messagesSent.Set(float64(broker.SystemInfo().MessagesSent))
-		publishDropped.Set(float64(broker.SystemInfo().PublishDropped))
-		publishRecv.Set(float64(broker.SystemInfo().PublishRecv))
-		publishSent.Set(float64(broker.SystemInfo().PublishSent))
 		inflight.Set(float64(broker.SystemInfo().Inflight))
 
 		time.Sleep(10 * time.Second)

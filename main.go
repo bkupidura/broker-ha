@@ -11,6 +11,8 @@ import (
 	"brokerha/internal/bus"
 	"brokerha/internal/discovery"
 	"brokerha/internal/metric"
+
+	"github.com/mochi-co/mqtt/v2/hooks/auth"
 )
 
 var (
@@ -57,15 +59,17 @@ func main() {
 		log.Fatal(err)
 	}
 
-	mqttUserACL := make(map[string][]broker.ACL)
-	config.UnmarshalKey("mqtt.acl", &mqttUserACL)
+	mqttAuth := auth.AuthRules{}
+	config.UnmarshalKey("mqtt.auth", &mqttAuth)
+	mqttACL := auth.ACLRules{}
+	config.UnmarshalKey("mqtt.acl", &mqttACL)
 
 	config.UnmarshalKey("mqtt.subscription_size", &subscriptionSize)
 
 	b, _, err := broker.New(&broker.Options{
 		MQTTPort:         config.GetInt("mqtt.port"),
-		AuthUsers:        config.GetStringMapString("mqtt.user"),
-		AuthACL:          mqttUserACL,
+		Auth:             mqttAuth,
+		ACL:              mqttACL,
 		Bus:              evBus,
 		SubscriptionSize: subscriptionSize,
 	})

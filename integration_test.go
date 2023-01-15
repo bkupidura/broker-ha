@@ -19,7 +19,6 @@ import (
 func TestBrokerHA(t *testing.T) {
 
 	os.Setenv("BROKER_DISCOVERY_DOMAIN", "test")
-	os.Setenv("BROKER_MQTT_USER", `{"test": "test"}`)
 
 	minInitSleep = 1
 	maxInitSleep = 2
@@ -81,6 +80,8 @@ func TestBrokerHA(t *testing.T) {
 		t.Fatalf("memberlist.Create error: %s", err)
 	}
 	defer m2.Shutdown()
+
+	m1.Join([]string{"127.0.0.1:7948"})
 
 	joinedNodes, err := m2.Join([]string{"127.0.0.1:7946", "127.0.0.1:7947"})
 	if err != nil {

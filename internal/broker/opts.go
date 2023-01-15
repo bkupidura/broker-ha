@@ -2,12 +2,14 @@ package broker
 
 import (
 	"brokerha/internal/bus"
+
+	"github.com/mochi-co/mqtt/v2/hooks/auth"
 )
 
 // Options contains configurable options for the broker.
 type Options struct {
-	AuthUsers        map[string]string
-	AuthACL          map[string][]ACL
+	Auth             auth.AuthRules
+	ACL              auth.ACLRules
 	MQTTPort         int
 	Bus              *bus.Bus
 	SubscriptionSize map[string]int

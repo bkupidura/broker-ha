@@ -2,7 +2,6 @@ package broker
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"log"
 	"strings"
@@ -10,8 +9,9 @@ import (
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
-	mqtt "github.com/mochi-co/mqtt/server"
-	"github.com/mochi-co/mqtt/server/events"
+	"github.com/mochi-co/mqtt/v2"
+	"github.com/mochi-co/mqtt/v2/hooks/auth"
+	"github.com/mochi-co/mqtt/v2/packets"
 	"github.com/stretchr/testify/require"
 
 	"brokerha/internal/bus"
@@ -28,12 +28,13 @@ func TestAuth(t *testing.T) {
 			inputOptions: &Options{
 				MQTTPort:         1883,
 				Bus:              bus.New(),
-				AuthUsers:        map[string]string{"test": "test"},
+				Auth:             auth.AuthRules{{Username: "test", Password: "test", Allow: true}},
 				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 			},
 			inputMQTTClientOps: paho.NewClientOptions().
 				AddBroker("127.0.0.1:1883").
 				SetAutoReconnect(false).
+				SetConnectRetry(false).
 				SetUsername("test").
 				SetPassword("test").
 				SetClientID("client1"),
@@ -42,7 +43,7 @@ func TestAuth(t *testing.T) {
 			inputOptions: &Options{
 				MQTTPort:         1883,
 				Bus:              bus.New(),
-				AuthUsers:        map[string]string{"test": "test"},
+				Auth:             auth.AuthRules{{Username: "test", Password: "test", Allow: true}},
 				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 			},
 			inputMQTTClientOps: paho.NewClientOptions().
@@ -51,13 +52,13 @@ func TestAuth(t *testing.T) {
 				SetUsername("test").
 				SetPassword("test2").
 				SetClientID("client1"),
-			expectedError: errors.New("bad user name or password"),
+			expectedError: errors.New("not Authorized"),
 		},
 		{
 			inputOptions: &Options{
 				MQTTPort:         1883,
 				Bus:              bus.New(),
-				AuthUsers:        map[string]string{"test": "test"},
+				Auth:             auth.AuthRules{{Username: "test", Password: "test", Allow: true}},
 				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 			},
 			inputMQTTClientOps: paho.NewClientOptions().
@@ -66,7 +67,7 @@ func TestAuth(t *testing.T) {
 				SetUsername("test2").
 				SetPassword("test").
 				SetClientID("client1"),
-			expectedError: errors.New("bad user name or password"),
+			expectedError: errors.New("not Authorized"),
 		},
 		{
 			inputOptions: &Options{
@@ -104,6 +105,7 @@ func TestAuth(t *testing.T) {
 		if token.Error() == nil {
 			mqttClient.Disconnect(10)
 		}
+
 		ctxCancel()
 		b.Shutdown()
 
@@ -179,12 +181,13 @@ func TestNew(t *testing.T) {
 				"cluster broker started",
 				"starting handleNewMember worker",
 				"starting publishToMQTT worker",
+				"auth for mqtt disabled",
 			},
 		},
 		{
 			inputOptions: &Options{
 				MQTTPort:         1883,
-				AuthUsers:        map[string]string{"test": "test"},
+				Auth:             auth.AuthRules{{Username: "test", Password: "test", Allow: true}},
 				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 			},
 			expectedLog: []string{
@@ -222,7 +225,7 @@ func TestNew(t *testing.T) {
 
 		if err == nil {
 			ctxCancel()
-			broker.server.Close()
+			broker.Shutdown()
 
 			// We need to ensure that handlers are closed, otherwise they will break other tests.
 			time.Sleep(100 * time.Millisecond)
@@ -250,7 +253,7 @@ func TestSystemInfo(t *testing.T) {
 		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
-	defer broker.server.Close()
+	defer broker.Shutdown()
 	defer ctxCancel()
 
 	si := broker.SystemInfo()
@@ -308,11 +311,11 @@ func TestMessages(t *testing.T) {
 		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
-	defer broker.server.Close()
+	defer broker.Shutdown()
 	defer ctxCancel()
 
-	broker.server.Publish("test", []byte("test"), true)
-	broker.server.Publish("test2", []byte("test2"), true)
+	broker.server.Publish("test", []byte("test"), true, 0)
+	broker.server.Publish("test2", []byte("test2"), true, 0)
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -326,18 +329,15 @@ func TestClients(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              bus.New(),
-		AuthUsers:        map[string]string{"test": "test"},
 		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
-	defer broker.server.Close()
+	defer broker.Shutdown()
 	defer ctxCancel()
 
 	mqttConnOpts := paho.NewClientOptions().
 		AddBroker("127.0.0.1:1883").
 		SetAutoReconnect(false).
-		SetUsername("test").
-		SetPassword("test").
 		SetClientID("TestClients")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
@@ -347,13 +347,13 @@ func TestClients(t *testing.T) {
 	defer mqttClient.Disconnect(1)
 
 	clients := broker.Clients()
+
 	require.Equal(t, []*MQTTClient{
 		{
-			ID:            "TestClients",
-			Done:          0,
-			Username:      []byte("test"),
-			Subscriptions: map[string]byte{},
-			CleanSession:  true,
+			ID:              "TestClients",
+			CleanSession:    true,
+			Subscriptions:   map[string]packets.Subscription{},
+			ProtocolVersion: 4,
 		},
 	}, clients)
 
@@ -372,29 +372,25 @@ func TestClient(t *testing.T) {
 		{
 			inputClientID: "TestClient",
 			expectedClient: &MQTTClient{
-				ID:            "TestClient",
-				Done:          0,
-				Username:      []byte("test"),
-				Subscriptions: map[string]byte{},
-				CleanSession:  true,
+				ID:              "TestClient",
+				CleanSession:    true,
+				Subscriptions:   map[string]packets.Subscription{},
+				ProtocolVersion: 4,
 			},
 		},
 	}
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              bus.New(),
-		AuthUsers:        map[string]string{"test": "test"},
 		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
-	defer broker.server.Close()
+	defer broker.Shutdown()
 	defer ctxCancel()
 
 	mqttConnOpts := paho.NewClientOptions().
 		AddBroker("127.0.0.1:1883").
 		SetAutoReconnect(false).
-		SetUsername("test").
-		SetPassword("test").
 		SetClientID("TestClient")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
@@ -421,11 +417,10 @@ func TestStopClient(t *testing.T) {
 			expectedErr:   errors.New("unknown client"),
 			expectedClients: []*MQTTClient{
 				{
-					ID:            "TestStopClient",
-					Done:          0,
-					Username:      []byte("test"),
-					Subscriptions: map[string]byte{},
-					CleanSession:  true,
+					ID:              "TestStopClient",
+					CleanSession:    true,
+					Subscriptions:   map[string]packets.Subscription{},
+					ProtocolVersion: 4,
 				},
 			},
 		},
@@ -433,11 +428,11 @@ func TestStopClient(t *testing.T) {
 			inputClientID: "TestStopClient",
 			expectedClients: []*MQTTClient{
 				{
-					ID:            "TestStopClient",
-					Done:          1,
-					Username:      []byte("test"),
-					Subscriptions: map[string]byte{},
-					CleanSession:  true,
+					ID:              "TestStopClient",
+					CleanSession:    true,
+					Subscriptions:   map[string]packets.Subscription{},
+					ProtocolVersion: 4,
+					Done:            true,
 				},
 			},
 		},
@@ -445,18 +440,15 @@ func TestStopClient(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              bus.New(),
-		AuthUsers:        map[string]string{"test": "test"},
 		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
-	defer broker.server.Close()
+	defer broker.Shutdown()
 	defer ctxCancel()
 
 	mqttConnOpts := paho.NewClientOptions().
 		AddBroker("127.0.0.1:1883").
 		SetAutoReconnect(false).
-		SetUsername("test").
-		SetPassword("test").
 		SetClientID("TestStopClient")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
@@ -499,7 +491,6 @@ func TestInflights(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		AuthUsers:        map[string]string{"test": "test"},
 		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
@@ -509,9 +500,8 @@ func TestInflights(t *testing.T) {
 	mqttConnOpts := paho.NewClientOptions().
 		AddBroker("127.0.0.1:1883").
 		SetAutoReconnect(false).
-		SetUsername("test").
-		SetPassword("test").
-		SetClientID("TestInflights")
+		SetClientID("TestInflights").
+		SetCleanSession(false)
 
 	mqttClient := paho.NewClient(mqttConnOpts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
@@ -528,6 +518,7 @@ func TestInflights(t *testing.T) {
 		Topic:   "TestInflights",
 		Payload: []byte("test"),
 		Retain:  true,
+		Qos:     2,
 	})
 
 	time.Sleep(100 * time.Millisecond)
@@ -542,16 +533,28 @@ func TestInflights(t *testing.T) {
 func TestSubscribers(t *testing.T) {
 	tests := []struct {
 		inputFilter         string
-		expectedSubscribers map[string]byte
+		expectedSubscribers *mqtt.Subscribers
 	}{
 		{
-			inputFilter:         "missing",
-			expectedSubscribers: map[string]byte{},
+			inputFilter: "missing",
+			expectedSubscribers: &mqtt.Subscribers{
+				Shared:         make(map[string]map[string]packets.Subscription),
+				SharedSelected: make(map[string]packets.Subscription),
+				Subscriptions:  make(map[string]packets.Subscription),
+			},
 		},
 		{
 			inputFilter: "TestSubscribers",
-			expectedSubscribers: map[string]byte{
-				"TestSubscribers": byte(2),
+			expectedSubscribers: &mqtt.Subscribers{
+				Shared:         make(map[string]map[string]packets.Subscription),
+				SharedSelected: make(map[string]packets.Subscription),
+				Subscriptions: map[string]packets.Subscription{
+					"TestSubscribers": {
+						Filter:      "TestSubscribers",
+						Qos:         2,
+						Identifiers: map[string]int{"TestSubscribers": 0},
+					},
+				},
 			},
 		},
 	}
@@ -559,7 +562,6 @@ func TestSubscribers(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		AuthUsers:        map[string]string{"test": "test"},
 		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
 	})
 	require.Nil(t, err)
@@ -569,8 +571,6 @@ func TestSubscribers(t *testing.T) {
 	mqttConnOpts := paho.NewClientOptions().
 		AddBroker("127.0.0.1:1883").
 		SetAutoReconnect(false).
-		SetUsername("test").
-		SetPassword("test").
 		SetClientID("TestSubscribers")
 
 	mqttClient := paho.NewClient(mqttConnOpts)
@@ -589,80 +589,88 @@ func TestSubscribers(t *testing.T) {
 	}
 }
 
-func TestOnMessage(t *testing.T) {
-	evBus := bus.New()
-	ch, err := evBus.Subscribe("cluster:message_to", "TestOnMessage", 1024)
-	require.Nil(t, err)
-
-	broker := &Broker{
-		bus: evBus,
-	}
-	eventClient := events.Client{
-		ID:       "testid",
-		Remote:   "unknown",
-		Listener: "testlistener",
-	}
-	eventPacket := events.Packet{
-		Payload:   []byte("test"),
-		TopicName: "topic",
-	}
-	broker.onMessage(eventClient, eventPacket)
-
-	e := <-ch
-	message := e.Data.(types.DiscoveryPublishMessage)
-
-	require.Equal(t, []byte("test"), message.Payload)
-	require.Equal(t, "topic", message.Topic)
-}
-
 func TestPublishToMQTT(t *testing.T) {
 	tests := []struct {
-		inputMessage    types.MQTTPublishMessage
-		expectedLog     string
-		expectedMessage *types.MQTTPublishMessage
+		inputMessage     types.MQTTPublishMessage
+		expectedPayload  []byte
+		expectedQos      byte
+		expectedTopic    string
+		expectedRetained bool
 	}{
 		{
-			inputMessage: types.MQTTPublishMessage{Topic: "$SYS", Payload: []byte("test")},
-			expectedLog:  "starting publishToMQTT worker\nunable to publish message from cluster {[116 101 115 116] $SYS false 0}: cannot publish to $ and $SYS topics\n",
+			inputMessage:     types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test"), Retain: true, Qos: 2},
+			expectedPayload:  []byte("test"),
+			expectedTopic:    "topic",
+			expectedQos:      2,
+			expectedRetained: true,
 		},
 		{
-			inputMessage:    types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test"), Retain: true},
-			expectedLog:     "starting publishToMQTT worker\n",
-			expectedMessage: &types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test"), Retain: true, Qos: 0},
+			inputMessage:     types.MQTTPublishMessage{Topic: "topic2", Payload: []byte("test2"), Retain: true, Qos: 1},
+			expectedPayload:  []byte("test2"),
+			expectedTopic:    "topic2",
+			expectedQos:      1,
+			expectedRetained: true,
+		},
+		{
+			inputMessage:     types.MQTTPublishMessage{Topic: "topic3", Payload: []byte("test3"), Retain: true, Qos: 0},
+			expectedPayload:  []byte("test3"),
+			expectedTopic:    "topic3",
+			expectedQos:      0,
+			expectedRetained: true,
+		},
+		{
+			inputMessage:     types.MQTTPublishMessage{Topic: "topic4", Payload: []byte("test4"), Retain: false, Qos: 2},
+			expectedPayload:  []byte("test4"),
+			expectedTopic:    "topic4",
+			expectedQos:      2,
+			expectedRetained: false,
 		},
 	}
 
-	log.SetFlags(0)
-	var logOutput bytes.Buffer
-	log.SetOutput(&logOutput)
-
 	evBus := bus.New()
-	ch, err := evBus.Subscribe("cluster:message_from", "broker", 1024)
+	broker, ctxCancel, err := New(&Options{
+		MQTTPort:         1883,
+		Bus:              evBus,
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
+	})
+
 	require.Nil(t, err)
 
-	broker := &Broker{
-		server: mqtt.NewServer(&mqtt.Options{}),
-		bus:    evBus,
+	defer ctxCancel()
+	defer broker.Shutdown()
+
+	mqttReceiveQueue := make(chan paho.Message, 5)
+	mqttOnMessage := func(client paho.Client, message paho.Message) {
+		mqttReceiveQueue <- message
 	}
-	defer broker.server.Close()
+
+	mqttConnOpts := paho.NewClientOptions().
+		AddBroker("127.0.0.1:1883")
+
+	mqttClient := paho.NewClient(mqttConnOpts)
+	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
+		t.Fatalf("paho.NewClient error: %s", token.Error())
+	}
+
+	if token := mqttClient.Subscribe("#", byte(0), mqttOnMessage); token.Wait() && token.Error() != nil {
+		t.Fatalf("mqttClient.Subscribe error: %s", token.Error())
+	}
+	defer mqttClient.Disconnect(10)
 
 	for _, test := range tests {
-		logOutput.Reset()
-
-		ctx, ctxCancel := context.WithCancel(context.Background())
-		go broker.publishToMQTT(ctx, ch)
 
 		evBus.Publish("cluster:message_from", test.inputMessage)
 
 		time.Sleep(1 * time.Millisecond)
-		require.Equal(t, test.expectedLog, logOutput.String())
 
-		if test.expectedMessage != nil {
-			messages := broker.Messages("#")
-			require.Contains(t, messages, test.expectedMessage)
+		if test.expectedPayload != nil {
+			mqttMessage := <-mqttReceiveQueue
+			require.Equal(t, test.expectedTopic, mqttMessage.Topic())
+			require.Equal(t, test.expectedPayload, mqttMessage.Payload())
+			require.Equal(t, test.expectedQos, mqttMessage.Qos())
+			require.Equal(t, test.expectedRetained, mqttMessage.Retained())
 		}
 
-		ctxCancel()
 		time.Sleep(10 * time.Millisecond)
 
 	}
@@ -671,12 +679,11 @@ func TestPublishToMQTT(t *testing.T) {
 func TestHandleNewMember(t *testing.T) {
 	tests := []struct {
 		inputNewMember  string
-		expectedLog     string
 		expectedMessage types.DiscoveryPublishMessage
 	}{
 		{
+
 			inputNewMember: "127.0.0.1:9746",
-			expectedLog:    "starting handleNewMember queue worker\n",
 			expectedMessage: types.DiscoveryPublishMessage{
 				Node:    []string{"127.0.0.1:9746"},
 				Payload: []byte("test"),
@@ -686,38 +693,28 @@ func TestHandleNewMember(t *testing.T) {
 		},
 	}
 
-	log.SetFlags(0)
-	var logOutput bytes.Buffer
-	log.SetOutput(&logOutput)
-
 	evBus := bus.New()
-	ch, err := evBus.Subscribe("cluster:new_member", "broker", 10)
+	ch, err := evBus.Subscribe("cluster:message_to", "t", 1024)
 	require.Nil(t, err)
 
-	ch2, err := evBus.Subscribe("cluster:message_to", "broker", 1024)
+	broker, ctxCancel, err := New(&Options{
+		MQTTPort:         1883,
+		Bus:              evBus,
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
+	})
 	require.Nil(t, err)
+	defer broker.Shutdown()
+	defer ctxCancel()
 
-	broker := &Broker{
-		server: mqtt.NewServer(&mqtt.Options{}),
-		bus:    evBus,
-	}
-	defer broker.server.Close()
-
-	err = broker.server.Publish("test", []byte("test"), true)
+	err = broker.server.Publish("test", []byte("test"), true, 0)
 	require.Nil(t, err)
 
 	for _, test := range tests {
-		logOutput.Reset()
-		ctx, ctxCancel := context.WithCancel(context.Background())
-
-		go broker.handleNewMember(ctx, ch)
-
 		evBus.Publish("cluster:new_member", test.inputNewMember)
 
-		e := <-ch2
+		e := <-ch
 		require.Equal(t, test.expectedMessage, e.Data.(types.DiscoveryPublishMessage))
 
-		ctxCancel()
 		time.Sleep(1 * time.Millisecond)
 	}
 }
