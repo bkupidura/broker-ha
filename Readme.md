@@ -4,7 +4,7 @@ Broker-HA is golang MQTT broker with clustering capabilities build for K8s.
 Its based on [mochi-co/mqtt](https://github.com/mochi-co/mqtt/) and [hashicorp/memberlist](https://github.com/hashicorp/memberlist).
 
 Features:
-- Paho MQTT 3.0 / 3.1.1 compatible (drop-in replacement for Mosquitto [MQTT 3.0/3.1.1])
+- Paho MQTT 3.0 / 3.1.1 / 5.0 compatible (drop-in replacement for Mosquitto [MQTT 3.0/3.1.1/5.0])
 - Clustering!
 - HTTP API
 
@@ -26,7 +26,6 @@ DNS SRV discovery is only used to discover initial (after startup) cluster membe
 ## Limitations
 
 - Member auto-discovery requires DNS SRV (e.g K8s headless service)
-- No MQTT 5 support
 
 
 ## Configuration
@@ -48,16 +47,20 @@ mqtt:
   subscription_size:
     "cluster:message_from": 1024
     "cluster:new_member": 10
-  user:
-    test: test
-    admin: admin
+  auth:
+    - username: test
+      password: test
+      allow: true
+    - client: someClientID
+      allow: true
+    - remote: 127.0.0.1
+      allow: true
   acl:
-    admin:
-      - action: "allow"
-        prefix: ""
-    default:
-      - action: "deny"
-        prefix: "/restricted"
+    // 0 = deny, 1 = read only, 2 = write only, 3 = read and write
+    - username: test
+      filters:
+        "a/#": 0
+        "b/#": 2
 cluster:
   expected_members: 3
   config:
@@ -132,7 +135,6 @@ metadata:
     app.kubernetes.io/name: mqtt
 spec:
   type: LoadBalancer
-  loadBalancerIP: "10.0.10.43"
   externalTrafficPolicy: Local
   publishNotReadyAddresses: false
   ports:
@@ -150,8 +152,10 @@ data:
       domain: broker-headless.broker-ha.svc.cluster.local
     mqtt:
       port: 1883
-      user:
-        test: test
+      auth:
+        - username: test
+          password: test
+          allow: true
     cluster:
       config:
         probe_interval: 500
@@ -361,7 +365,7 @@ curl localhost:8080/api/mqtt/clients
 
 Response:
 ```
-[{"ID":"akjnd9qjamz","Done":0,"Username":"dGVzdA==","Subscriptions":{"test/#":0},"CleanSession":true},{"ID":"cc9suhht6732q61bc6cg","Done":0,"Username":"dGVzdDI=","Subscriptions":{"test2":2},"CleanSession":true},{"ID":"1J6jKJjcnn8s8Wk0cz3PO2","Done":0,"Username":"dGVzdDM=","Subscriptions":{"test3/test":0,"test3/test":0},"CleanSession":true}]
+[{"ID":"cf1up11t673b49rllusg","ProtocolVersion":4,"Username":"cmVjb3JkZXI=","CleanSession":true,"Done":false,"Subscriptions":{"recorder":{"ShareName":null,"Filter":"recorder","Identifier":0,"Identifiers":null,"RetainHandling":0,"Qos":2,"RetainAsPublished":false,"NoLocal":false}}}]
 ```
 
 ### :8080/api/mqtt/client/stop
@@ -370,7 +374,7 @@ Stop (disconnect) MQTT client.
 
 cURL:
 ```
-curl localhost:8080/api/mqtt/client/stop -d '{"client_id": "akjnd9qjamz"}' -H 'Content-Type: application/json'
+curl localhost:8080/api/mqtt/client/stop -d '{"client_id": "cf1up11t673b49rllusg"}' -H 'Content-Type: application/json'
 ```
 
 Request params:
@@ -390,7 +394,7 @@ Request params:
 
 Response:
 ```
-[{"Payload":"dGVzdCBtZXNzYWdl","Topic":"test","Retain":false,"Qos":2}]
+[{"Payload":"b25saW5l","Topic":"recorder/available","Retain":true,"Qos":1}]
 ```
 
 ### :8080/api/mqtt/topic/messages
@@ -416,7 +420,7 @@ Return MQTT client ID and QoS for subscription topic.
 
 cURL:
 ```
-curl localhost:8080/api/mqtt/topic/messages -d '{"topic": "something"}' -H 'Content-Type: application/json'
+curl localhost:8080/api/mqtt/topic/subscribers -d '{"topic": "something"}' -H 'Content-Type: application/json'
 ```
 
 Request params:
@@ -424,5 +428,5 @@ Request params:
 
 Response:
 ```
-{"something":0}
+{"Shared":{},"SharedSelected":{},"Subscriptions":{"cf1up11t673b49rllusg":{"ShareName":null,"Filter":"recorder","Identifier":0,"Identifiers":{"recorder":0},"RetainHandling":0,"Qos":2,"RetainAsPublished":false,"NoLocal":false}}}
 ```

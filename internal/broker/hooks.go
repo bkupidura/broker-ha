@@ -10,7 +10,7 @@ import (
 	"brokerha/internal/types"
 )
 
-// Hook implements all mochi-co/mqtt hooks.
+// Hook implements mochi-co/mqtt hooks.
 type Hook struct {
 	mqtt.HookBase
 	bus *bus.Bus
