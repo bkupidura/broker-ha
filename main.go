@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -96,7 +97,7 @@ func main() {
 
 	go func() {
 		defer wg.Done()
-		log.Fatal(http.ListenAndServe(":8080", httpRouter))
+		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", api.HTTPPort), httpRouter))
 	}()
 
 	if err := d.FormCluster(minInitSleep, maxInitSleep); err != nil {

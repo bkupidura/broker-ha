@@ -263,44 +263,64 @@ func TestSystemInfo(t *testing.T) {
 func TestMessages(t *testing.T) {
 	tests := []struct {
 		inputFilter      string
-		expectedMessages []*types.MQTTPublishMessage
+		expectedMessages []packets.Packet
 	}{
 		{
 			inputFilter: "test",
-			expectedMessages: []*types.MQTTPublishMessage{
+			expectedMessages: []packets.Packet{
 				{
-					Topic:   "test",
-					Payload: []byte("test"),
-					Qos:     0,
-					Retain:  true,
+					TopicName:       "test",
+					Payload:         []byte("test"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
 				},
 			},
 		},
 		{
 			inputFilter: "test2",
-			expectedMessages: []*types.MQTTPublishMessage{
+			expectedMessages: []packets.Packet{
 				{
-					Topic:   "test2",
-					Payload: []byte("test2"),
-					Qos:     0,
-					Retain:  true,
+					TopicName:       "test2",
+					Payload:         []byte("test2"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
 				},
 			},
 		},
 		{
 			inputFilter: "#",
-			expectedMessages: []*types.MQTTPublishMessage{
+			expectedMessages: []packets.Packet{
 				{
-					Topic:   "test",
-					Payload: []byte("test"),
-					Qos:     0,
-					Retain:  true,
+					TopicName:       "test",
+					Payload:         []byte("test"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
 				},
 				{
-					Topic:   "test2",
-					Payload: []byte("test2"),
-					Qos:     0,
-					Retain:  true,
+					TopicName:       "test2",
+					Payload:         []byte("test2"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
 				},
 			},
 		},
@@ -316,12 +336,17 @@ func TestMessages(t *testing.T) {
 
 	broker.server.Publish("test", []byte("test"), true, 0)
 	broker.server.Publish("test2", []byte("test2"), true, 0)
+	now := time.Now().Unix()
 
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	for _, test := range tests {
 		messages := broker.Messages(test.inputFilter)
-		require.ElementsMatch(t, test.expectedMessages, messages)
+		for idx, pk := range test.expectedMessages {
+			pk.Created = now
+			test.expectedMessages[idx] = pk
+		}
+		require.Equal(t, test.expectedMessages, messages)
 	}
 }
 

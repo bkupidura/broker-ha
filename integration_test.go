@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"brokerha/internal/api"
+
 	"github.com/alexliesenfeld/health"
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/hashicorp/memberlist"
@@ -130,7 +132,7 @@ func TestBrokerHA(t *testing.T) {
 	require.Equal(t, []byte("test"), mqttMessage.Payload(), "wrong payload")
 
 	for _, endpoint := range []string{"ready", "healthz"} {
-		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8080/%s", endpoint))
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/%s", api.HTTPPort, endpoint))
 
 		require.Equal(t, 200, resp.StatusCode, fmt.Sprintf("unexpected status code for %s endpoint", endpoint))
 		require.Nil(t, err, fmt.Sprintf("unexpected error for %s endpoint", endpoint))
@@ -144,7 +146,7 @@ func TestBrokerHA(t *testing.T) {
 	time.Sleep(15 * time.Second)
 
 	for _, endpoint := range []string{"ready", "healthz"} {
-		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8080/%s", endpoint))
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/%s", api.HTTPPort, endpoint))
 
 		require.Equal(t, 503, resp.StatusCode, fmt.Sprintf("unexpected status code for %s endpoint", endpoint))
 		require.Nil(t, err, fmt.Sprintf("unexpected error for %s endpoint", endpoint))

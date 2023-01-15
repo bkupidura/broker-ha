@@ -23,6 +23,8 @@ var (
 	sseKeepalive = 60
 	// List of allowed SSE channels.
 	sseChannels = []string{"cluster:message_from", "cluster:message_to", "cluster:new_member"}
+	// API listening port.
+	HTTPPort = 8080
 )
 
 // errResponse describes error response for any API call.
@@ -62,6 +64,7 @@ func unableToPerformError(err error) render.Renderer {
 	}
 }
 
+// proxyHandler will proxy request to every node in the cluster and return combined response.
 func proxyHandler(d *discovery.Discovery) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c := &http.Client{}
@@ -74,7 +77,7 @@ func proxyHandler(d *discovery.Discovery) func(http.ResponseWriter, *http.Reques
 
 		for _, member := range d.Members(true) {
 			r.Body = io.NopCloser(bytes.NewBuffer(body))
-			memberReq, err := http.NewRequest(r.Method, fmt.Sprintf("http://%s:8080%s", member.Addr.String(), strings.TrimPrefix(r.URL.Path, "/proxy")), r.Body)
+			memberReq, err := http.NewRequest(r.Method, fmt.Sprintf("http://%s:%d%s", member.Addr.String(), HTTPPort, strings.TrimPrefix(r.URL.Path, "/proxy")), r.Body)
 			if err != nil {
 				render.Render(w, r, invalidRequestError(err))
 				return

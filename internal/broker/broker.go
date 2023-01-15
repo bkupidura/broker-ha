@@ -122,17 +122,8 @@ func (b *Broker) SystemInfo() *system.Info {
 
 // Messages returns stored messages based on filter.
 // Filter can use regular MQTT wildcards (#, +).
-func (b *Broker) Messages(filter string) []*types.MQTTPublishMessage {
-	var messages []*types.MQTTPublishMessage
-	for _, m := range b.server.Topics.Messages(filter) {
-		messages = append(messages, &types.MQTTPublishMessage{
-			Payload: m.Payload,
-			Topic:   m.TopicName,
-			Retain:  m.FixedHeader.Retain,
-			Qos:     m.FixedHeader.Qos,
-		})
-	}
-	return messages
+func (b *Broker) Messages(filter string) []packets.Packet {
+	return b.server.Topics.Messages(filter)
 }
 
 // Clients returns all MQTT clients.
@@ -219,9 +210,9 @@ func (b *Broker) handleNewMember(ctx context.Context, ch chan bus.Event) {
 			for _, message := range b.Messages("#") {
 				m := types.DiscoveryPublishMessage{
 					Payload: message.Payload,
-					Topic:   message.Topic,
-					Retain:  message.Retain,
-					Qos:     message.Qos,
+					Topic:   message.TopicName,
+					Retain:  message.FixedHeader.Retain,
+					Qos:     message.FixedHeader.Qos,
 					Node:    []string{member},
 				}
 				b.bus.Publish("cluster:message_to", m)
