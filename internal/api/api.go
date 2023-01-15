@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -65,7 +66,14 @@ func proxyHandler(d *discovery.Discovery) func(http.ResponseWriter, *http.Reques
 	return func(w http.ResponseWriter, r *http.Request) {
 		c := &http.Client{}
 		mergedResponse := map[string]interface{}{}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			render.Render(w, r, invalidRequestError(err))
+			return
+		}
+
 		for _, member := range d.Members(true) {
+			r.Body = io.NopCloser(bytes.NewBuffer(body))
 			memberReq, err := http.NewRequest(r.Method, fmt.Sprintf("http://%s:8080%s", member.Addr.String(), strings.TrimPrefix(r.URL.Path, "/proxy")), r.Body)
 			if err != nil {
 				render.Render(w, r, invalidRequestError(err))

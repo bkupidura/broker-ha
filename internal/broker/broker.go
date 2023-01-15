@@ -21,7 +21,7 @@ import (
 type MQTTClient struct {
 	ID              string
 	ProtocolVersion byte
-	Username        []byte
+	Username        string
 	CleanSession    bool
 	Done            bool
 	Subscriptions   map[string]packets.Subscription
@@ -142,7 +142,7 @@ func (b *Broker) Clients() []*MQTTClient {
 		clients = append(clients, &MQTTClient{
 			ID:              c.ID,
 			ProtocolVersion: c.Properties.ProtocolVersion,
-			Username:        c.Properties.Username,
+			Username:        string(c.Properties.Username),
 			CleanSession:    c.Properties.Clean,
 			Done:            c.Closed(),
 			Subscriptions:   c.State.Subscriptions.GetAll(),
@@ -160,7 +160,7 @@ func (b *Broker) Client(clientID string) (*MQTTClient, error) {
 	return &MQTTClient{
 		ID:              client.ID,
 		ProtocolVersion: client.Properties.ProtocolVersion,
-		Username:        client.Properties.Username,
+		Username:        string(client.Properties.Username),
 		CleanSession:    client.Properties.Clean,
 		Done:            client.Closed(),
 		Subscriptions:   client.State.Subscriptions.GetAll(),
