@@ -468,7 +468,7 @@ func TestStopClient(t *testing.T) {
 func TestInflights(t *testing.T) {
 	tests := []struct {
 		inputClientID     string
-		expectedInflights []*types.MQTTPublishMessage
+		expectedInflights []packets.Packet
 		expectedErr       error
 	}{
 		{
@@ -477,12 +477,21 @@ func TestInflights(t *testing.T) {
 		},
 		{
 			inputClientID: "TestInflights",
-			expectedInflights: []*types.MQTTPublishMessage{
+			expectedInflights: []packets.Packet{
 				{
-					Payload: []byte("test"),
-					Topic:   "TestInflights",
-					Retain:  true,
-					Qos:     2,
+					Payload:   []byte("test"),
+					TopicName: "TestInflights",
+					Origin:    "inline",
+					Properties: packets.Properties{
+						SubscriptionIdentifier: []int{0},
+					},
+					FixedHeader: packets.FixedHeader{
+						Type:   3,
+						Qos:    2,
+						Retain: true,
+					},
+					PacketID:        1,
+					ProtocolVersion: 4,
 				},
 			},
 		},
@@ -520,12 +529,19 @@ func TestInflights(t *testing.T) {
 		Retain:  true,
 		Qos:     2,
 	})
+	now := time.Now().Unix()
 
 	time.Sleep(100 * time.Millisecond)
 
 	for _, test := range tests {
 		inflights, err := broker.Inflights(test.inputClientID)
 		require.Equal(t, test.expectedErr, err)
+		for idx, pk := range test.expectedInflights {
+			pk.Created = now
+			pk.Expiry = now + broker.server.Options.Capabilities.MaximumMessageExpiryInterval
+			test.expectedInflights[idx] = pk
+		}
+
 		require.Equal(t, test.expectedInflights, inflights)
 	}
 }

@@ -394,7 +394,7 @@ Request params:
 
 Response:
 ```
-[{"Payload":"b25saW5l","Topic":"recorder/available","Retain":true,"Qos":1}]
+[{"Connect":{"willProperties":{"cd":null,"si":null,"ad":null,"user":null,"ct":"","rt":"","aci":"","am":"","ri":"","sr":"","rs":"","me":0,"sei":0,"wdi":0,"mps":0,"ska":0,"rm":0,"tam":0,"ta":0,"pf":0,"fpf":false,"fsei":false,"fska":false,"rpi":0,"frpi":false,"rri":0,"fta":false,"mqos":0,"fmqos":false,"ra":0,"fra":false,"wsa":0,"fwsa":false,"sida":0,"fsida":false,"ssa":0,"fssa":false},"password":null,"username":null,"protocolName":null,"willPayload":null,"clientId":"","willTopic":"","keepalive":0,"passwordFlag":false,"usernameFlag":false,"willQos":0,"willFlag":false,"willRetain":false,"clean":false},"Properties":{"cd":null,"si":[0],"ad":null,"user":null,"ct":"","rt":"","aci":"","am":"","ri":"","sr":"","rs":"","me":0,"sei":0,"wdi":0,"mps":0,"ska":0,"rm":0,"tam":0,"ta":0,"pf":0,"fpf":false,"fsei":false,"fska":false,"rpi":0,"frpi":false,"rri":0,"fta":false,"mqos":0,"fmqos":false,"ra":0,"fra":false,"wsa":0,"fwsa":false,"sida":0,"fsida":false,"ssa":0,"fssa":false},"Payload":"dGVzdA==","ReasonCodes":null,"Filters":null,"TopicName":"TestMqttClientInflightHandler","Origin":"inline","FixedHeader":{"remaining":0,"type":3,"qos":2,"dup":false,"retain":true},"Created":1673806755,"Expiry":1673807355,"Mods":{"MaxSize":0,"DisallowProblemInfo":false,"AllowResponseInfo":false},"PacketID":1,"ProtocolVersion":4,"SessionPresent":false,"ReasonCode":0,"ReservedBit":0}]
 ```
 
 ### :8080/api/mqtt/topic/messages

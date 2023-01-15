@@ -557,7 +557,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 				require.Equal(t, test.expectedError, resp["error"])
 			}
 		} else {
-			var resp []*types.MQTTPublishMessage
+			var resp []packets.Packet
 			unmarshalBody(res.Body, &resp)
 			require.Equal(t, test.expectedInflight, len(resp))
 		}

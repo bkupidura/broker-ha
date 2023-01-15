@@ -54,7 +54,12 @@ func New(opts *Options) (*Broker, context.CancelFunc, error) {
 		return nil, nil, err
 	}
 
-	mqttServer := mqtt.New(&mqtt.Options{})
+	mqttDefaultCapabilities := mqtt.DefaultServerCapabilities
+	mqttDefaultCapabilities.MaximumMessageExpiryInterval = 60 * 30
+
+	mqttServer := mqtt.New(&mqtt.Options{
+		Capabilities: mqttDefaultCapabilities,
+	})
 	l := mqttServer.Log.Level(zerolog.Disabled)
 	mqttServer.Log = &l
 
@@ -173,21 +178,12 @@ func (b *Broker) StopClient(clientID, reason string) error {
 }
 
 // Inflights returns in-flight MQTT messages for clientID.
-func (b *Broker) Inflights(clientID string) ([]*types.MQTTPublishMessage, error) {
-	var messages []*types.MQTTPublishMessage
+func (b *Broker) Inflights(clientID string) ([]packets.Packet, error) {
 	client, ok := b.server.Clients.Get(clientID)
 	if !ok {
 		return nil, errors.New("unknown client")
 	}
-	for _, m := range client.State.Inflight.GetAll(false) {
-		messages = append(messages, &types.MQTTPublishMessage{
-			Payload: m.Payload,
-			Topic:   m.TopicName,
-			Retain:  m.FixedHeader.Retain,
-			Qos:     m.FixedHeader.Qos,
-		})
-	}
-	return messages, nil
+	return client.State.Inflight.GetAll(false), nil
 }
 
 // Subscribers returns clientIDs subscribed for topic.
