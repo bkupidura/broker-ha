@@ -73,7 +73,7 @@ func New(opts *Options) (*Broker, context.CancelFunc, error) {
 			return nil, nil, err
 		}
 	} else {
-		log.Printf("auth for mqtt disabled")
+		log.Printf("auth for MQTT disabled")
 		if err := mqttServer.AddHook(new(auth.AllowHook), nil); err != nil {
 			return nil, nil, err
 		}

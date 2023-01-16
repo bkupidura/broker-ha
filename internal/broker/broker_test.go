@@ -181,7 +181,7 @@ func TestNew(t *testing.T) {
 				"cluster broker started",
 				"starting handleNewMember worker",
 				"starting publishToMQTT worker",
-				"auth for mqtt disabled",
+				"auth for MQTT disabled",
 			},
 		},
 		{
