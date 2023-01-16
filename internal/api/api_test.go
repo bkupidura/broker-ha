@@ -174,14 +174,17 @@ func TestProxyHandler(t *testing.T) {
 		w := httptest.NewRecorder()
 		req := test.inputReqFunc()
 		var servers []*http.Server
+
 		if test.inputServers != nil {
 			servers = test.inputServers()
 			if len(servers) > 0 {
 				for _, s := range servers {
 					go s.ListenAndServe()
 				}
+				time.Sleep(10 * time.Millisecond)
 			}
 		}
+
 		handler(w, req)
 		res := w.Result()
 		defer res.Body.Close()
@@ -190,6 +193,7 @@ func TestProxyHandler(t *testing.T) {
 			for _, s := range servers {
 				s.Shutdown(context.TODO())
 			}
+			time.Sleep(10 * time.Millisecond)
 		}
 
 		require.Equal(t, test.expectedCode, w.Code)
@@ -659,7 +663,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 		inputRequest     map[string]interface{}
 		expectedCode     int
 		expectedError    string
-		expectedInflight int
+		expectedMessages []packets.Packet
 	}{
 		{
 			inputRequest:  map[string]interface{}{},
@@ -677,9 +681,25 @@ func TestMqttClientInflightHandler(t *testing.T) {
 			expectedError: "unknown client",
 		},
 		{
-			inputRequest:     map[string]interface{}{"client_id": "TestMqttClientInflightHandler"},
-			expectedCode:     http.StatusOK,
-			expectedInflight: 1,
+			inputRequest: map[string]interface{}{"client_id": "TestMqttClientInflightHandler"},
+			expectedCode: http.StatusOK,
+			expectedMessages: []packets.Packet{
+				{
+					TopicName:       "TestMqttClientInflightHandler",
+					Payload:         []byte("test"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					PacketID:        1,
+					FixedHeader: packets.FixedHeader{
+						Retain: true,
+						Qos:    2,
+						Type:   3,
+					},
+					Properties: packets.Properties{
+						SubscriptionIdentifier: []int{0},
+					},
+				},
+			},
 		},
 	}
 
@@ -716,6 +736,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 		Retain:  true,
 		Qos:     2,
 	})
+	now := time.Now().Unix()
 
 	handler := mqttClientInflightHandler(b)
 
@@ -734,6 +755,12 @@ func TestMqttClientInflightHandler(t *testing.T) {
 		res := w.Result()
 		defer res.Body.Close()
 
+		for idx, pk := range test.expectedMessages {
+			pk.Created = now
+			pk.Expiry = now + 60*30
+			test.expectedMessages[idx] = pk
+		}
+
 		if w.Code != http.StatusOK {
 			resp := make(map[string]string)
 			unmarshalBody(res.Body, &resp)
@@ -744,7 +771,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 		} else {
 			var resp []packets.Packet
 			unmarshalBody(res.Body, &resp)
-			require.Equal(t, test.expectedInflight, len(resp))
+			require.Equal(t, test.expectedMessages, resp)
 		}
 	}
 }
@@ -754,7 +781,7 @@ func TestMqttTopicMessagesHandler(t *testing.T) {
 		inputRequest     map[string]interface{}
 		expectedCode     int
 		expectedError    string
-		expectedMessages int
+		expectedMessages []packets.Packet
 	}{
 		{
 			inputRequest:  map[string]interface{}{},
@@ -769,12 +796,23 @@ func TestMqttTopicMessagesHandler(t *testing.T) {
 		{
 			inputRequest:     map[string]interface{}{"topic": "missing"},
 			expectedCode:     http.StatusOK,
-			expectedMessages: 0,
+			expectedMessages: []packets.Packet{},
 		},
 		{
-			inputRequest:     map[string]interface{}{"topic": "TestMqttTopicMessagesHandler"},
-			expectedCode:     http.StatusOK,
-			expectedMessages: 1,
+			inputRequest: map[string]interface{}{"topic": "TestMqttTopicMessagesHandler"},
+			expectedCode: http.StatusOK,
+			expectedMessages: []packets.Packet{
+				{
+					TopicName:       "TestMqttTopicMessagesHandler",
+					Payload:         []byte("test"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Retain: true,
+						Type:   3,
+					},
+				},
+			},
 		},
 	}
 	evBus := bus.New()
@@ -792,6 +830,9 @@ func TestMqttTopicMessagesHandler(t *testing.T) {
 		Payload: []byte("test"),
 		Retain:  true,
 	})
+	now := time.Now().Unix()
+
+	time.Sleep(100 * time.Millisecond)
 
 	handler := mqttTopicMessagesHandler(b)
 
@@ -808,6 +849,11 @@ func TestMqttTopicMessagesHandler(t *testing.T) {
 		res := w.Result()
 		defer res.Body.Close()
 
+		for idx, pk := range test.expectedMessages {
+			pk.Created = now
+			test.expectedMessages[idx] = pk
+		}
+
 		if w.Code != http.StatusOK {
 			resp := make(map[string]string)
 			unmarshalBody(res.Body, &resp)
@@ -818,7 +864,7 @@ func TestMqttTopicMessagesHandler(t *testing.T) {
 		} else {
 			var resp []packets.Packet
 			unmarshalBody(res.Body, &resp)
-			require.Equal(t, test.expectedMessages, len(resp))
+			require.Equal(t, test.expectedMessages, resp)
 		}
 	}
 }

@@ -346,7 +346,7 @@ func TestMessages(t *testing.T) {
 			pk.Created = now
 			test.expectedMessages[idx] = pk
 		}
-		require.Equal(t, test.expectedMessages, messages)
+		require.ElementsMatch(t, test.expectedMessages, messages)
 	}
 }
 
