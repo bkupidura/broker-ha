@@ -181,7 +181,7 @@ func TestNew(t *testing.T) {
 				"cluster broker started",
 				"starting handleNewMember worker",
 				"starting publishToMQTT worker",
-				"auth for mqtt disabled",
+				"auth for MQTT disabled",
 			},
 		},
 		{
@@ -263,44 +263,64 @@ func TestSystemInfo(t *testing.T) {
 func TestMessages(t *testing.T) {
 	tests := []struct {
 		inputFilter      string
-		expectedMessages []*types.MQTTPublishMessage
+		expectedMessages []packets.Packet
 	}{
 		{
 			inputFilter: "test",
-			expectedMessages: []*types.MQTTPublishMessage{
+			expectedMessages: []packets.Packet{
 				{
-					Topic:   "test",
-					Payload: []byte("test"),
-					Qos:     0,
-					Retain:  true,
+					TopicName:       "test",
+					Payload:         []byte("test"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
 				},
 			},
 		},
 		{
 			inputFilter: "test2",
-			expectedMessages: []*types.MQTTPublishMessage{
+			expectedMessages: []packets.Packet{
 				{
-					Topic:   "test2",
-					Payload: []byte("test2"),
-					Qos:     0,
-					Retain:  true,
+					TopicName:       "test2",
+					Payload:         []byte("test2"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
 				},
 			},
 		},
 		{
 			inputFilter: "#",
-			expectedMessages: []*types.MQTTPublishMessage{
+			expectedMessages: []packets.Packet{
 				{
-					Topic:   "test",
-					Payload: []byte("test"),
-					Qos:     0,
-					Retain:  true,
+					TopicName:       "test",
+					Payload:         []byte("test"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
 				},
 				{
-					Topic:   "test2",
-					Payload: []byte("test2"),
-					Qos:     0,
-					Retain:  true,
+					TopicName:       "test2",
+					Payload:         []byte("test2"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
 				},
 			},
 		},
@@ -316,12 +336,17 @@ func TestMessages(t *testing.T) {
 
 	broker.server.Publish("test", []byte("test"), true, 0)
 	broker.server.Publish("test2", []byte("test2"), true, 0)
+	now := time.Now().Unix()
 
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	for _, test := range tests {
 		messages := broker.Messages(test.inputFilter)
-		require.ElementsMatch(t, test.expectedMessages, messages)
+		for idx, pk := range test.expectedMessages {
+			pk.Created = now
+			test.expectedMessages[idx] = pk
+		}
+		require.Equal(t, test.expectedMessages, messages)
 	}
 }
 
@@ -612,7 +637,15 @@ func TestPublishToMQTT(t *testing.T) {
 		expectedQos      byte
 		expectedTopic    string
 		expectedRetained bool
+		expectedLog      []string
 	}{
+		{
+			inputMessage: types.MQTTPublishMessage{Topic: "topic#", Payload: []byte("test"), Retain: true, Qos: 2},
+			expectedLog: []string{
+				"",
+				"unable to publish message from cluster {[116 101 115 116] topic# true 2}: protocol violation: topic contains wildcards",
+			},
+		},
 		{
 			inputMessage:     types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test"), Retain: true, Qos: 2},
 			expectedPayload:  []byte("test"),
@@ -673,7 +706,12 @@ func TestPublishToMQTT(t *testing.T) {
 	}
 	defer mqttClient.Disconnect(10)
 
+	log.SetFlags(0)
+	var logOutput bytes.Buffer
+	log.SetOutput(&logOutput)
+
 	for _, test := range tests {
+		logOutput.Reset()
 
 		evBus.Publish("cluster:message_from", test.inputMessage)
 
@@ -685,6 +723,11 @@ func TestPublishToMQTT(t *testing.T) {
 			require.Equal(t, test.expectedPayload, mqttMessage.Payload())
 			require.Equal(t, test.expectedQos, mqttMessage.Qos())
 			require.Equal(t, test.expectedRetained, mqttMessage.Retained())
+		}
+		if len(test.expectedLog) > 0 {
+			for _, line := range strings.Split(logOutput.String(), "\n") {
+				require.Contains(t, test.expectedLog, line)
+			}
 		}
 
 		time.Sleep(10 * time.Millisecond)

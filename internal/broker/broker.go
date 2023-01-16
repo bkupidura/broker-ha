@@ -21,7 +21,7 @@ import (
 type MQTTClient struct {
 	ID              string
 	ProtocolVersion byte
-	Username        []byte
+	Username        string
 	CleanSession    bool
 	Done            bool
 	Subscriptions   map[string]packets.Subscription
@@ -73,7 +73,7 @@ func New(opts *Options) (*Broker, context.CancelFunc, error) {
 			return nil, nil, err
 		}
 	} else {
-		log.Printf("auth for mqtt disabled")
+		log.Printf("auth for MQTT disabled")
 		if err := mqttServer.AddHook(new(auth.AllowHook), nil); err != nil {
 			return nil, nil, err
 		}
@@ -122,17 +122,8 @@ func (b *Broker) SystemInfo() *system.Info {
 
 // Messages returns stored messages based on filter.
 // Filter can use regular MQTT wildcards (#, +).
-func (b *Broker) Messages(filter string) []*types.MQTTPublishMessage {
-	var messages []*types.MQTTPublishMessage
-	for _, m := range b.server.Topics.Messages(filter) {
-		messages = append(messages, &types.MQTTPublishMessage{
-			Payload: m.Payload,
-			Topic:   m.TopicName,
-			Retain:  m.FixedHeader.Retain,
-			Qos:     m.FixedHeader.Qos,
-		})
-	}
-	return messages
+func (b *Broker) Messages(filter string) []packets.Packet {
+	return b.server.Topics.Messages(filter)
 }
 
 // Clients returns all MQTT clients.
@@ -142,7 +133,7 @@ func (b *Broker) Clients() []*MQTTClient {
 		clients = append(clients, &MQTTClient{
 			ID:              c.ID,
 			ProtocolVersion: c.Properties.ProtocolVersion,
-			Username:        c.Properties.Username,
+			Username:        string(c.Properties.Username),
 			CleanSession:    c.Properties.Clean,
 			Done:            c.Closed(),
 			Subscriptions:   c.State.Subscriptions.GetAll(),
@@ -160,7 +151,7 @@ func (b *Broker) Client(clientID string) (*MQTTClient, error) {
 	return &MQTTClient{
 		ID:              client.ID,
 		ProtocolVersion: client.Properties.ProtocolVersion,
-		Username:        client.Properties.Username,
+		Username:        string(client.Properties.Username),
 		CleanSession:    client.Properties.Clean,
 		Done:            client.Closed(),
 		Subscriptions:   client.State.Subscriptions.GetAll(),
@@ -219,9 +210,9 @@ func (b *Broker) handleNewMember(ctx context.Context, ch chan bus.Event) {
 			for _, message := range b.Messages("#") {
 				m := types.DiscoveryPublishMessage{
 					Payload: message.Payload,
-					Topic:   message.Topic,
-					Retain:  message.Retain,
-					Qos:     message.Qos,
+					Topic:   message.TopicName,
+					Retain:  message.FixedHeader.Retain,
+					Qos:     message.FixedHeader.Qos,
 					Node:    []string{member},
 				}
 				b.bus.Publish("cluster:message_to", m)

@@ -258,6 +258,8 @@ api:
 
 All `/api` prefixed endpoints will return `200` on success, `400` on wrong request or `500` when request cant be executed.
 
+Some `/api` endpoints are supporting `/proxy` prefix. This allow to send request to single `broker-ha` instance and get combined response from every node in the cluster.
+
 ### :8080/metrics endpoint
 
 Expose Prometheus metrics.
@@ -340,7 +342,7 @@ event: cluster:message_from
 data: {"Payload":"MA==","Topic":"red/action/event","Retain":false,"Qos":0}
 ```
 
-### :8080/api/discovery/members
+### :8080/api/discovery/members | :8080/proxy/api/discovery/members
 
 Return discovery (memberlist) members.
 
@@ -354,7 +356,7 @@ Response:
 [{"Name":"broker-ha-6ffc959cff-v5495","Addr":"10.42.2.242","Port":7946,"Meta":"","State":0,"PMin":1,"PMax":5,"PCur":2,"DMin":0,"DMax":0,"DCur":0},{"Name":"broker-ha-6ffc959cff-v62ct","Addr":"10.42.1.14","Port":7946,"Meta":"","State":0,"PMin":1,"PMax":5,"PCur":2,"DMin":0,"DMax":0,"DCur":0},{"Name":"broker-ha-6ffc959cff-mrzrk","Addr":"10.42.0.205","Port":7946,"Meta":"","State":0,"PMin":1,"PMax":5,"PCur":2,"DMin":0,"DMax":0,"DCur":0}]
 ```
 
-### :8080/api/mqtt/clients
+### :8080/api/mqtt/clients | :8080/proxy/api/mqtt/clients
 
 Return MQTT broker clients.
 
@@ -365,7 +367,7 @@ curl localhost:8080/api/mqtt/clients
 
 Response:
 ```
-[{"ID":"cf1up11t673b49rllusg","ProtocolVersion":4,"Username":"cmVjb3JkZXI=","CleanSession":true,"Done":false,"Subscriptions":{"recorder":{"ShareName":null,"Filter":"recorder","Identifier":0,"Identifiers":null,"RetainHandling":0,"Qos":2,"RetainAsPublished":false,"NoLocal":false}}}]
+[{"ID":"cf1up11t673b49rllusg","ProtocolVersion":4,"Username":"recorder","CleanSession":true,"Done":false,"Subscriptions":{"recorder":{"ShareName":null,"Filter":"recorder","Identifier":0,"Identifiers":null,"RetainHandling":0,"Qos":2,"RetainAsPublished":false,"NoLocal":false}}}]
 ```
 
 ### :8080/api/mqtt/client/stop
@@ -380,7 +382,7 @@ curl localhost:8080/api/mqtt/client/stop -d '{"client_id": "cf1up11t673b49rllusg
 Request params:
 - client_id - MQTT client ID.
 
-### :8080/api/client/inflight
+### :8080/api/mqtt/client/inflight | :8080/proxy/api/mqtt/client/inflight
 
 Return MQTT in-flight messages for client.
 
@@ -397,7 +399,7 @@ Response:
 [{"Connect":{"willProperties":{"cd":null,"si":null,"ad":null,"user":null,"ct":"","rt":"","aci":"","am":"","ri":"","sr":"","rs":"","me":0,"sei":0,"wdi":0,"mps":0,"ska":0,"rm":0,"tam":0,"ta":0,"pf":0,"fpf":false,"fsei":false,"fska":false,"rpi":0,"frpi":false,"rri":0,"fta":false,"mqos":0,"fmqos":false,"ra":0,"fra":false,"wsa":0,"fwsa":false,"sida":0,"fsida":false,"ssa":0,"fssa":false},"password":null,"username":null,"protocolName":null,"willPayload":null,"clientId":"","willTopic":"","keepalive":0,"passwordFlag":false,"usernameFlag":false,"willQos":0,"willFlag":false,"willRetain":false,"clean":false},"Properties":{"cd":null,"si":[0],"ad":null,"user":null,"ct":"","rt":"","aci":"","am":"","ri":"","sr":"","rs":"","me":0,"sei":0,"wdi":0,"mps":0,"ska":0,"rm":0,"tam":0,"ta":0,"pf":0,"fpf":false,"fsei":false,"fska":false,"rpi":0,"frpi":false,"rri":0,"fta":false,"mqos":0,"fmqos":false,"ra":0,"fra":false,"wsa":0,"fwsa":false,"sida":0,"fsida":false,"ssa":0,"fssa":false},"Payload":"dGVzdA==","ReasonCodes":null,"Filters":null,"TopicName":"TestMqttClientInflightHandler","Origin":"inline","FixedHeader":{"remaining":0,"type":3,"qos":2,"dup":false,"retain":true},"Created":1673806755,"Expiry":1673807355,"Mods":{"MaxSize":0,"DisallowProblemInfo":false,"AllowResponseInfo":false},"PacketID":1,"ProtocolVersion":4,"SessionPresent":false,"ReasonCode":0,"ReservedBit":0}]
 ```
 
-### :8080/api/mqtt/topic/messages
+### :8080/api/mqtt/topic/messages | :8080/proxy/api/mqtt/topic/messages
 
 Return MQTT retained messages for topic.
 
@@ -411,10 +413,10 @@ Request params:
 
 Response:
 ```
-[{"Payload":"b25saW5l","Topic":"red/available","Retain":true,"Qos":0},{"Payload":"MQ==","Topic":"nfc2mqtt/online","Retain":true,"Qos":0}]
+[{"Connect":{"willProperties":{"cd":null,"si":null,"ad":null,"user":null,"ct":"","rt":"","aci":"","am":"","ri":"","sr":"","rs":"","me":0,"sei":0,"wdi":0,"mps":0,"ska":0,"rm":0,"tam":0,"ta":0,"pf":0,"fpf":false,"fsei":false,"fska":false,"rpi":0,"frpi":false,"rri":0,"fta":false,"mqos":0,"fmqos":false,"ra":0,"fra":false,"wsa":0,"fwsa":false,"sida":0,"fsida":false,"ssa":0,"fssa":false},"password":null,"username":null,"protocolName":null,"willPayload":null,"clientId":"","willTopic":"","keepalive":0,"passwordFlag":false,"usernameFlag":false,"willQos":0,"willFlag":false,"willRetain":false,"clean":false},"Properties":{"cd":null,"si":null,"ad":null,"user":null,"ct":"","rt":"","aci":"","am":"","ri":"","sr":"","rs":"","me":0,"sei":0,"wdi":0,"mps":0,"ska":0,"rm":0,"tam":0,"ta":0,"pf":0,"fpf":false,"fsei":false,"fska":false,"rpi":0,"frpi":false,"rri":0,"fta":false,"mqos":0,"fmqos":false,"ra":0,"fra":false,"wsa":0,"fwsa":false,"sida":0,"fsida":false,"ssa":0,"fssa":false},"Payload":"dGVzdA==","ReasonCodes":null,"Filters":null,"TopicName":"TestMqttTopicMessagesHandler","Origin":"inline","FixedHeader":{"remaining":0,"type":3,"qos":0,"dup":false,"retain":true},"Created":1673825332,"Expiry":0,"Mods":{"MaxSize":0,"DisallowProblemInfo":false,"AllowResponseInfo":false},"PacketID":0,"ProtocolVersion":4,"SessionPresent":false,"ReasonCode":0,"ReservedBit":0}]
 ```
 
-### :8080/api/mqtt/topic/subscribers
+### :8080/api/mqtt/topic/subscribers | :8080/proxy/api/mqtt/topic/subscribers
 
 Return MQTT client ID and QoS for subscription topic.
 

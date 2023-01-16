@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -23,6 +25,189 @@ import (
 	"brokerha/internal/discovery"
 	"brokerha/internal/types"
 )
+
+func TestProxyHandler(t *testing.T) {
+	tests := []struct {
+		inputReqFunc  func() *http.Request
+		inputServers  func() []*http.Server
+		expectedCode  int
+		expectedError string
+		expectedBody  map[string]interface{}
+	}{
+		{
+			inputReqFunc: func() *http.Request {
+				r := httptest.NewRequest(http.MethodGet, "/proxy/api/discovery/members", nil)
+				r.Body = errReader(0)
+				return r
+			},
+			expectedCode:  http.StatusBadRequest,
+			expectedError: "test error",
+		},
+		{
+			inputReqFunc: func() *http.Request {
+				r := httptest.NewRequest(http.MethodGet, "/proxy/api/discovery/members", nil)
+				r.Method = "*?"
+				return r
+			},
+			expectedCode:  http.StatusBadRequest,
+			expectedError: "net/http: invalid method \"*?\"",
+		},
+		{
+			inputReqFunc: func() *http.Request {
+				r := httptest.NewRequest(http.MethodGet, "/proxy/api/discovery/members", nil)
+				return r
+			},
+			expectedCode:  http.StatusBadRequest,
+			expectedError: "Get \"http://127.0.0.1:8080/api/discovery/members\": dial tcp 127.0.0.1:8080: connect: connection refused",
+		},
+		{
+			inputReqFunc: func() *http.Request {
+				r := httptest.NewRequest(http.MethodGet, "/proxy/api/discovery/members", nil)
+				return r
+			},
+			inputServers: func() []*http.Server {
+				h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Length", "1")
+					fmt.Fprintln(w, "Hello")
+				})
+				s := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", HTTPPort), Handler: h}
+				return []*http.Server{s}
+			},
+			expectedCode:  http.StatusBadRequest,
+			expectedError: "unexpected EOF",
+		},
+		{
+			inputReqFunc: func() *http.Request {
+				r := httptest.NewRequest(http.MethodGet, "/proxy/api/discovery/members", nil)
+				r.Header.Add("test-header", "test")
+				return r
+			},
+			inputServers: func() []*http.Server {
+				h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					require.Equal(t, "test", r.Header.Get("test-header"))
+					require.Equal(t, "/api/discovery/members", r.URL.Path)
+					require.Equal(t, http.MethodGet, r.Method)
+
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprintln(w, "{\"a\": \"b\"}")
+				})
+				s := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", HTTPPort), Handler: h}
+				return []*http.Server{s}
+			},
+			expectedCode: http.StatusOK,
+			expectedBody: map[string]interface{}{
+				"node1": map[string]interface{}{
+					"a": "b",
+				},
+				"node2": map[string]interface{}{
+					"a": "b",
+				},
+			},
+		},
+		{
+			inputReqFunc: func() *http.Request {
+				r := httptest.NewRequest(http.MethodPost, "/proxy/api/mqtt/client/inflight", strings.NewReader("{'client_id': 'test'}"))
+				r.Header.Add("test-header", "test2")
+				return r
+			},
+			inputServers: func() []*http.Server {
+				h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					require.Equal(t, "test2", r.Header.Get("test-header"))
+					require.Equal(t, "/api/mqtt/client/inflight", r.URL.Path)
+					require.Equal(t, http.MethodPost, r.Method)
+
+					reqBody, err := io.ReadAll(r.Body)
+					require.Nil(t, err)
+					require.Equal(t, []byte("{'client_id': 'test'}"), reqBody)
+
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprintln(w, "{\"c\": \"d\"}")
+				})
+				s := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", HTTPPort), Handler: h}
+				return []*http.Server{s}
+			},
+			expectedCode: http.StatusOK,
+			expectedBody: map[string]interface{}{
+				"node1": map[string]interface{}{
+					"c": "d",
+				},
+				"node2": map[string]interface{}{
+					"c": "d",
+				},
+			},
+		},
+	}
+	mlConfig1 := memberlist.DefaultLocalConfig()
+	mlConfig1.BindAddr = "127.0.0.1"
+	mlConfig1.BindPort = 7946
+	mlConfig1.AdvertisePort = 7946
+	mlConfig1.Name = "node1"
+	mlConfig1.LogOutput = ioutil.Discard
+
+	evBus := bus.New()
+	disco, ctxCancel, err := discovery.New(&discovery.Options{
+		Domain:           "test",
+		MemberListConfig: mlConfig1,
+		Bus:              evBus,
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024},
+	})
+	require.Nil(t, err)
+	defer disco.Shutdown()
+	defer ctxCancel()
+
+	mlConfig2 := memberlist.DefaultLocalConfig()
+	mlConfig2.BindAddr = "127.0.0.1"
+	mlConfig2.BindPort = 7947
+	mlConfig2.AdvertisePort = 7947
+	mlConfig2.Name = "node2"
+	mlConfig2.LogOutput = ioutil.Discard
+	m2, err := memberlist.Create(mlConfig2)
+	require.Nil(t, err)
+	defer m2.Shutdown()
+
+	_, err = m2.Join([]string{"127.0.0.1:7946"})
+	require.Nil(t, err)
+
+	handler := proxyHandler(disco)
+
+	for _, test := range tests {
+		w := httptest.NewRecorder()
+		req := test.inputReqFunc()
+		var servers []*http.Server
+		if test.inputServers != nil {
+			servers = test.inputServers()
+			if len(servers) > 0 {
+				for _, s := range servers {
+					go s.ListenAndServe()
+				}
+			}
+		}
+		handler(w, req)
+		res := w.Result()
+		defer res.Body.Close()
+
+		if len(servers) > 0 {
+			for _, s := range servers {
+				s.Shutdown(context.TODO())
+			}
+		}
+
+		require.Equal(t, test.expectedCode, w.Code)
+
+		if w.Code != http.StatusOK {
+			resp := make(map[string]string)
+			unmarshalBody(res.Body, &resp)
+
+			if test.expectedError != "" {
+				require.Equal(t, test.expectedError, resp["error"])
+			}
+		} else {
+			resp := make(map[string]interface{})
+			unmarshalBody(res.Body, &resp)
+			require.Equal(t, test.expectedBody, resp)
+		}
+	}
+}
 
 func TestSseHandler(t *testing.T) {
 	tests := []struct {
@@ -631,7 +816,7 @@ func TestMqttTopicMessagesHandler(t *testing.T) {
 				require.Equal(t, test.expectedError, resp["error"])
 			}
 		} else {
-			var resp []*types.MQTTPublishMessage
+			var resp []packets.Packet
 			unmarshalBody(res.Body, &resp)
 			require.Equal(t, test.expectedMessages, len(resp))
 		}
@@ -747,6 +932,16 @@ func unmarshalBody(body io.Reader, destination interface{}) interface{} {
 		panic("unable to unmarshal body")
 	}
 	return destination
+}
+
+type errReader int
+
+func (errReader) Read(p []byte) (n int, err error) {
+	return 0, errors.New("test error")
+}
+
+func (errReader) Close() error {
+	return nil
 }
 
 type ResponseWriter interface {

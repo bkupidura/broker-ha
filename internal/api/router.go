@@ -22,12 +22,17 @@ func NewRouter(opts *Options) *chi.Mux {
 	httpRouter.Group(func(r chi.Router) {
 		r.Use(middleware.CleanPath)
 		if len(opts.AuthUsers) > 0 {
-			log.Printf("basic auth for API HTTP endpoint enabled")
 			r.Use(middleware.BasicAuth("api", opts.AuthUsers))
 		} else {
-			log.Printf("basic auth for API HTTP endpoint disabled")
+			log.Printf("auth for HTTP API disabled")
 		}
 		r.Use(middleware.Recoverer)
+
+		r.Get("/proxy/api/discovery/members", proxyHandler(opts.Discovery))
+		r.Get("/proxy/api/mqtt/clients", proxyHandler(opts.Discovery))
+		r.Post("/proxy/api/mqtt/client/inflight", proxyHandler(opts.Discovery))
+		r.Post("/proxy/api/mqtt/topic/messages", proxyHandler(opts.Discovery))
+		r.Post("/proxy/api/mqtt/topic/subscribers", proxyHandler(opts.Discovery))
 
 		r.Post("/api/sse", sseHandler(opts.Bus))
 		r.Get("/api/discovery/members", discoveryMembersHandler(opts.Discovery))

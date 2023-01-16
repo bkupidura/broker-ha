@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -103,6 +104,24 @@ func TestNewRouter(t *testing.T) {
 		},
 		{
 			inputMethod:  http.MethodGet,
+			inputPath:    "/proxy/api/discovery/members",
+			expectedCode: http.StatusOK,
+		},
+		{
+			inputMethod:  http.MethodGet,
+			inputPath:    "/proxy/api/discovery/members",
+			expectedCode: http.StatusUnauthorized,
+			auth:         map[string]string{"test": "test"},
+		},
+		{
+			inputMethod:  http.MethodGet,
+			inputPath:    "/proxy/api/discovery/members",
+			inputAuth:    [2]string{"test", "test"},
+			expectedCode: http.StatusOK,
+			auth:         map[string]string{"test": "test"},
+		},
+		{
+			inputMethod:  http.MethodGet,
 			inputPath:    "/api/mqtt/clients",
 			expectedCode: http.StatusOK,
 		},
@@ -120,6 +139,24 @@ func TestNewRouter(t *testing.T) {
 			auth:         map[string]string{"test": "test"},
 		},
 		{
+			inputMethod:  http.MethodGet,
+			inputPath:    "/proxy/api/mqtt/clients",
+			expectedCode: http.StatusOK,
+		},
+		{
+			inputMethod:  http.MethodGet,
+			inputPath:    "/proxy/api/mqtt/clients",
+			expectedCode: http.StatusUnauthorized,
+			auth:         map[string]string{"test": "test"},
+		},
+		{
+			inputMethod:  http.MethodGet,
+			inputPath:    "/proxy/api/mqtt/clients",
+			inputAuth:    [2]string{"test", "test"},
+			expectedCode: http.StatusOK,
+			auth:         map[string]string{"test": "test"},
+		},
+		{
 			inputMethod:  http.MethodPost,
 			inputPath:    "/api/mqtt/client/stop",
 			expectedCode: http.StatusBadRequest,
@@ -157,6 +194,24 @@ func TestNewRouter(t *testing.T) {
 		},
 		{
 			inputMethod:  http.MethodPost,
+			inputPath:    "/proxy/api/mqtt/client/inflight",
+			expectedCode: http.StatusOK,
+		},
+		{
+			inputMethod:  http.MethodPost,
+			inputPath:    "/proxy/api/mqtt/client/inflight",
+			expectedCode: http.StatusUnauthorized,
+			auth:         map[string]string{"test": "test"},
+		},
+		{
+			inputMethod:  http.MethodPost,
+			inputPath:    "/proxy/api/mqtt/client/inflight",
+			inputAuth:    [2]string{"test", "test"},
+			expectedCode: http.StatusOK,
+			auth:         map[string]string{"test": "test"},
+		},
+		{
+			inputMethod:  http.MethodPost,
 			inputPath:    "/api/mqtt/topic/messages",
 			expectedCode: http.StatusBadRequest,
 		},
@@ -175,6 +230,24 @@ func TestNewRouter(t *testing.T) {
 		},
 		{
 			inputMethod:  http.MethodPost,
+			inputPath:    "/proxy/api/mqtt/topic/messages",
+			expectedCode: http.StatusOK,
+		},
+		{
+			inputMethod:  http.MethodPost,
+			inputPath:    "/proxy/api/mqtt/topic/messages",
+			expectedCode: http.StatusUnauthorized,
+			auth:         map[string]string{"test": "test"},
+		},
+		{
+			inputMethod:  http.MethodPost,
+			inputPath:    "/proxy/api/mqtt/topic/messages",
+			inputAuth:    [2]string{"test", "test"},
+			expectedCode: http.StatusOK,
+			auth:         map[string]string{"test": "test"},
+		},
+		{
+			inputMethod:  http.MethodPost,
 			inputPath:    "/api/mqtt/topic/subscribers",
 			expectedCode: http.StatusBadRequest,
 		},
@@ -189,6 +262,24 @@ func TestNewRouter(t *testing.T) {
 			inputPath:    "/api/mqtt/topic/subscribers",
 			inputAuth:    [2]string{"test", "test"},
 			expectedCode: http.StatusBadRequest,
+			auth:         map[string]string{"test": "test"},
+		},
+		{
+			inputMethod:  http.MethodPost,
+			inputPath:    "/proxy/api/mqtt/topic/subscribers",
+			expectedCode: http.StatusOK,
+		},
+		{
+			inputMethod:  http.MethodPost,
+			inputPath:    "/proxy/api/mqtt/topic/subscribers",
+			expectedCode: http.StatusUnauthorized,
+			auth:         map[string]string{"test": "test"},
+		},
+		{
+			inputMethod:  http.MethodPost,
+			inputPath:    "/proxy/api/mqtt/topic/subscribers",
+			inputAuth:    [2]string{"test", "test"},
+			expectedCode: http.StatusOK,
 			auth:         map[string]string{"test": "test"},
 		},
 	}
@@ -249,6 +340,10 @@ func TestNewRouter(t *testing.T) {
 			AuthUsers:              test.auth,
 			Bus:                    evBus,
 		})
+
+		httpServer := &http.Server{Addr: fmt.Sprintf(":%d", HTTPPort), Handler: router}
+		go httpServer.ListenAndServe()
+		defer httpServer.Shutdown(context.TODO())
 
 		router.ServeHTTP(w, req)
 
