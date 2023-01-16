@@ -637,7 +637,15 @@ func TestPublishToMQTT(t *testing.T) {
 		expectedQos      byte
 		expectedTopic    string
 		expectedRetained bool
+		expectedLog      []string
 	}{
+		{
+			inputMessage: types.MQTTPublishMessage{Topic: "topic#", Payload: []byte("test"), Retain: true, Qos: 2},
+			expectedLog: []string{
+				"",
+				"unable to publish message from cluster {[116 101 115 116] topic# true 2}: protocol violation: topic contains wildcards",
+			},
+		},
 		{
 			inputMessage:     types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test"), Retain: true, Qos: 2},
 			expectedPayload:  []byte("test"),
@@ -698,7 +706,12 @@ func TestPublishToMQTT(t *testing.T) {
 	}
 	defer mqttClient.Disconnect(10)
 
+	log.SetFlags(0)
+	var logOutput bytes.Buffer
+	log.SetOutput(&logOutput)
+
 	for _, test := range tests {
+		logOutput.Reset()
 
 		evBus.Publish("cluster:message_from", test.inputMessage)
 
@@ -710,6 +723,11 @@ func TestPublishToMQTT(t *testing.T) {
 			require.Equal(t, test.expectedPayload, mqttMessage.Payload())
 			require.Equal(t, test.expectedQos, mqttMessage.Qos())
 			require.Equal(t, test.expectedRetained, mqttMessage.Retained())
+		}
+		if len(test.expectedLog) > 0 {
+			for _, line := range strings.Split(logOutput.String(), "\n") {
+				require.Contains(t, test.expectedLog, line)
+			}
 		}
 
 		time.Sleep(10 * time.Millisecond)
