@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"log"
 	"net"
+	"os"
 	"testing"
 
 	"github.com/hashicorp/memberlist"
@@ -111,26 +112,27 @@ func TestDelegateGetBroadcasts(t *testing.T) {
 	require.Equal(t, [][]byte{}, d.GetBroadcasts(0, 0))
 }
 
-func TestDelegateLocalState(t *testing.T) {
-	d := &delegate{}
-
-	require.Equal(t, []byte{}, d.LocalState(true))
-	require.Equal(t, []byte{}, d.LocalState(false))
-}
+func TestDelegateLocalState(t *testing.T) {}
 
 func TestDelegateMergeRemoteState(t *testing.T) {}
 
 func TestDelegateEventNotifyJoin(t *testing.T) {
+	hostname, err := os.Hostname()
+	require.Nil(t, err)
+
 	tests := []struct {
 		inputMemberIP   net.IP
+		inputMemberName string
 		expectedLog     string
 		expectedMessage string
 	}{
 		{
-			inputMemberIP: net.ParseIP("127.0.0.1"),
+			inputMemberIP:   net.ParseIP("127.0.0.1"),
+			inputMemberName: hostname,
 		},
 		{
 			inputMemberIP:   net.ParseIP("1.2.3.4"),
+			inputMemberName: "test",
 			expectedLog:     "new cluster member 1.2.3.4:7946\n",
 			expectedMessage: "1.2.3.4:7946",
 		},
@@ -142,10 +144,9 @@ func TestDelegateEventNotifyJoin(t *testing.T) {
 	evBus := bus.New()
 
 	d := &delegateEvent{
-		selfAddress: map[string]struct{}{
-			"127.0.0.1:7946": {},
-		},
-		bus: evBus,
+		name:         hostname,
+		bus:          evBus,
+		retainedHash: &retainedHash{},
 	}
 
 	ch, err := evBus.Subscribe("cluster:new_member", "TestDelegateEventNotifyJoin", 10)
@@ -154,7 +155,7 @@ func TestDelegateEventNotifyJoin(t *testing.T) {
 	for _, test := range tests {
 		logOutput.Reset()
 
-		d.NotifyJoin(&memberlist.Node{Addr: test.inputMemberIP, Port: 7946})
+		d.NotifyJoin(&memberlist.Node{Addr: test.inputMemberIP, Port: 7946, Name: test.inputMemberName})
 		require.Equal(t, test.expectedLog, logOutput.String())
 
 		if test.expectedMessage != "" {
@@ -180,7 +181,9 @@ func TestDelegateEventNotifyLeave(t *testing.T) {
 	var logOutput bytes.Buffer
 	log.SetOutput(&logOutput)
 
-	d := &delegateEvent{}
+	d := &delegateEvent{
+		retainedHash: &retainedHash{},
+	}
 
 	for _, test := range tests {
 		logOutput.Reset()

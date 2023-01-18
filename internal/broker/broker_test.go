@@ -179,8 +179,7 @@ func TestNew(t *testing.T) {
 			expectedLog: []string{
 				"",
 				"cluster broker started",
-				"starting handleNewMember worker",
-				"starting publishToMQTT worker",
+				"starting eventloop",
 				"auth for MQTT disabled",
 			},
 		},
@@ -193,8 +192,7 @@ func TestNew(t *testing.T) {
 			expectedLog: []string{
 				"",
 				"cluster broker started",
-				"starting handleNewMember worker",
-				"starting publishToMQTT worker",
+				"starting eventloop",
 			},
 		},
 	}

@@ -18,6 +18,136 @@ import (
 	"brokerha/internal/types"
 )
 
+/*
+func TestGossip(t *testing.T) {
+	evBus1 := bus.New()
+	evBus2 := bus.New()
+	evBus3 := bus.New()
+
+	retainedHash1 := &retainedHash{
+		hashMap: map[string]retainedHashEntry{
+			"node1": retainedHashEntry{
+				Hash: "hash1",
+			},
+		},
+	}
+	retainedHash2 := &retainedHash{
+		hashMap: map[string]retainedHashEntry{
+			"node2": retainedHashEntry{
+				Hash: "hash2",
+			},
+		},
+	}
+	retainedHash3 := &retainedHash{
+		hashMap: map[string]retainedHashEntry{
+			"node3": retainedHashEntry{
+				Hash: "hash2",
+			},
+		},
+	}
+
+	mlConfig1 := memberlist.DefaultLocalConfig()
+	mlConfig1.Name = "node1"
+	mlConfig1.BindPort = 7946
+	mlConfig1.AdvertisePort = 7946
+	mlConfig1.BindAddr = "127.0.0.1"
+	mlConfig1.LogOutput = ioutil.Discard
+	mlConfig1.Events = &delegateEvent{
+		name:         "node1",
+		bus:          evBus1,
+		retainedHash: retainedHash1,
+	}
+	mlConfig1.Delegate = &delegate{
+		name:         "node1",
+		bus:          evBus1,
+		retainedHash: retainedHash1,
+	}
+	ml1, err := memberlist.Create(mlConfig1)
+	require.Nil(t, err)
+	_ = &Discovery{
+		domain: "test",
+		selfAddress: map[string]struct{}{
+			"127.0.0.1:7946": {},
+		},
+		config: mlConfig1,
+		ml:     ml1,
+		bus:    evBus1,
+	}
+	defer ml1.Shutdown()
+
+	mlConfig2 := memberlist.DefaultLocalConfig()
+	mlConfig2.Name = "node2"
+	mlConfig2.BindPort = 7947
+	mlConfig2.AdvertisePort = 7947
+	mlConfig2.BindAddr = "127.0.0.1"
+	mlConfig2.LogOutput = ioutil.Discard
+	mlConfig2.Events = &delegateEvent{
+		name:         "node2",
+		bus:          evBus2,
+		retainedHash: retainedHash2,
+	}
+	mlConfig2.Delegate = &delegate{
+		name:         "node2",
+		bus:          evBus2,
+		retainedHash: retainedHash2,
+	}
+	ml2, err := memberlist.Create(mlConfig2)
+	require.Nil(t, err)
+	_ = &Discovery{
+		domain: "test",
+		selfAddress: map[string]struct{}{
+			"127.0.0.1:7947": {},
+		},
+		config: mlConfig2,
+		ml:     ml2,
+		bus:    evBus2,
+	}
+	defer ml2.Shutdown()
+
+	mlConfig3 := memberlist.DefaultLocalConfig()
+	mlConfig3.Name = "node3"
+	mlConfig3.BindPort = 7948
+	mlConfig3.AdvertisePort = 7948
+	mlConfig3.BindAddr = "127.0.0.1"
+	mlConfig3.LogOutput = ioutil.Discard
+	mlConfig3.Events = &delegateEvent{
+		name:         "node3",
+		bus:          evBus3,
+		retainedHash: retainedHash3,
+	}
+	mlConfig3.Delegate = &delegate{
+		name:         "node3",
+		bus:          evBus3,
+		retainedHash: retainedHash3,
+	}
+	ml3, err := memberlist.Create(mlConfig3)
+	require.Nil(t, err)
+	_ = &Discovery{
+		domain: "test",
+		selfAddress: map[string]struct{}{
+			"127.0.0.1:7948": {},
+		},
+		config: mlConfig3,
+		ml:     ml3,
+		bus:    evBus3,
+	}
+	defer ml3.Shutdown()
+
+	n, err := ml1.Join([]string{"127.0.0.1:7947", "127.0.0.1:7948"})
+	require.Nil(t, err)
+	require.Equal(t, 2, n)
+
+	time.Sleep(25 * time.Second)
+
+	err = ml1.Shutdown()
+	require.Nil(t, err)
+
+	time.Sleep(5 * time.Second)
+
+	log.Printf("retainedHash 2 %+v\n", retainedHash2)
+	log.Printf("retainedHash 3 %+v\n", retainedHash3)
+}*/
+
 func TestNew(t *testing.T) {
 	tests := []struct {
 		mockNetInterfaceAddrs func() ([]net.Addr, error)

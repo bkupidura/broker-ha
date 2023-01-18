@@ -102,8 +102,7 @@ func New(opts *Options) (*Broker, context.CancelFunc, error) {
 	// ctx is used only by tests.
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
-	go broker.publishToMQTT(ctx, chFromCluster)
-	go broker.handleNewMember(ctx, chNewMember)
+	go broker.eventLoop(ctx, chFromCluster, chNewMember)
 
 	log.Printf("cluster broker started")
 
@@ -183,42 +182,39 @@ func (b *Broker) Subscribers(filter string) *mqtt.Subscribers {
 }
 
 // publishToMQTT will receive messages from discovery (memberlist), and publish them to local mqtt server.
-func (b *Broker) publishToMQTT(ctx context.Context, ch chan bus.Event) {
-	log.Printf("starting publishToMQTT worker")
-	for {
-		select {
-		case event := <-ch:
-			message := event.Data.(types.MQTTPublishMessage)
-			if err := b.server.Publish(message.Topic, message.Payload, message.Retain, message.Qos); err != nil {
-				log.Printf("unable to publish message from cluster %v: %s", message, err)
-			}
-		case <-ctx.Done():
-			log.Printf("publishToMQTT worker done")
-			return
-		}
+func (b *Broker) publishToMQTT(message types.MQTTPublishMessage) {
+	if err := b.server.Publish(message.Topic, message.Payload, message.Retain, message.Qos); err != nil {
+		log.Printf("unable to publish message from cluster %v: %s", message, err)
 	}
 }
 
 // handleNewMember will receive cluster member which just joined cluster.
 // We will send all localy retained messages to new node and sync it with rest of the cluster.
-func (b *Broker) handleNewMember(ctx context.Context, ch chan bus.Event) {
-	log.Printf("starting handleNewMember worker")
+func (b *Broker) handleNewMember(member string) {
+	for _, message := range b.Messages("#") {
+		m := types.DiscoveryPublishMessage{
+			Payload: message.Payload,
+			Topic:   message.TopicName,
+			Retain:  message.FixedHeader.Retain,
+			Qos:     message.FixedHeader.Qos,
+			Node:    []string{member},
+		}
+		b.bus.Publish("cluster:message_to", m)
+	}
+}
+
+func (b *Broker) eventLoop(ctx context.Context, chFromCluster chan bus.Event, chNewMember chan bus.Event) {
+	log.Printf("starting eventloop")
 	for {
 		select {
-		case event := <-ch:
+		case event := <-chFromCluster:
+			message := event.Data.(types.MQTTPublishMessage)
+			b.publishToMQTT(message)
+		case event := <-chNewMember:
 			member := event.Data.(string)
-			for _, message := range b.Messages("#") {
-				m := types.DiscoveryPublishMessage{
-					Payload: message.Payload,
-					Topic:   message.TopicName,
-					Retain:  message.FixedHeader.Retain,
-					Qos:     message.FixedHeader.Qos,
-					Node:    []string{member},
-				}
-				b.bus.Publish("cluster:message_to", m)
-			}
+			b.handleNewMember(member)
 		case <-ctx.Done():
-			log.Printf("handleNewMember worker done")
+			log.Printf("stopping eventloop")
 			return
 		}
 	}
