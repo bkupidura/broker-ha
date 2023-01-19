@@ -62,6 +62,7 @@ func (h *Hook) OnRetainMessage(cl *mqtt.Client, pk packets.Packet, r int64) {
 		Qos:     pk.FixedHeader.Qos,
 		Node:    []string{"all"},
 	}
+	log.Printf("new ratained message %+v", message)
 	data, err := json.Marshal(message)
 	if err != nil {
 		return

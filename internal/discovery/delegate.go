@@ -126,7 +126,7 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 
 	log.Printf("%s old retainedHash: %+v", d.name, d.retainedHash)
 	d.retainedHash.Set(state[0], state[1])
-	log.Printf("%s new popularHash: %+v", d.name, d.retainedHash)
+	log.Printf("%s new retainedHash: %+v", d.name, d.retainedHash)
 
 	localHashEntry := d.retainedHash.Get(d.name)
 	popularHash, nodes := d.retainedHash.PopularHash()
