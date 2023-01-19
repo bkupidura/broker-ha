@@ -2,9 +2,12 @@ package broker
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 
 	"github.com/mochi-co/mqtt/v2"
 	"github.com/mochi-co/mqtt/v2/hooks/auth"
@@ -35,21 +38,22 @@ type Broker struct {
 
 // New creates and starts Broker instance.
 func New(opts *Options) (*Broker, context.CancelFunc, error) {
-	fromClusterSize, ok := opts.SubscriptionSize["cluster:message_from"]
-	if !ok {
-		return nil, nil, fmt.Errorf("subscription size for cluster:message_from not provided")
+	for _, requiredSubscriptionSizeName := range []string{"cluster:message_from", "broker:send_retained", "broker:pk_retained"} {
+		if _, ok := opts.SubscriptionSize[requiredSubscriptionSizeName]; !ok {
+			return nil, nil, fmt.Errorf("subscription size for %s not provided", requiredSubscriptionSizeName)
+		}
 	}
-
-	chFromCluster, err := opts.Bus.Subscribe("cluster:message_from", "broker", fromClusterSize)
+	chClusterMessageFrom, err := opts.Bus.Subscribe("cluster:message_from", "broker", opts.SubscriptionSize["cluster:message_from"])
 	if err != nil {
 		return nil, nil, err
 	}
 
-	newMemberSize, ok := opts.SubscriptionSize["cluster:new_member"]
-	if !ok {
-		return nil, nil, fmt.Errorf("subscription size for cluster:new_member not provided")
+	chBrokerSendRetained, err := opts.Bus.Subscribe("broker:send_retained", "broker", opts.SubscriptionSize["broker:send_retained"])
+	if err != nil {
+		return nil, nil, err
 	}
-	chNewMember, err := opts.Bus.Subscribe("cluster:new_member", "broker", newMemberSize)
+
+	chBrokerPKRetained, err := opts.Bus.Subscribe("broker:pk_retained", "broker", opts.SubscriptionSize["broker:pk_retained"])
 	if err != nil {
 		return nil, nil, err
 	}
@@ -102,9 +106,7 @@ func New(opts *Options) (*Broker, context.CancelFunc, error) {
 	// ctx is used only by tests.
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
-	go broker.eventLoop(ctx, chFromCluster, chNewMember)
-
-	log.Printf("cluster broker started")
+	go broker.eventLoop(ctx, chClusterMessageFrom, chBrokerSendRetained, chBrokerPKRetained)
 
 	return broker, ctxCancel, nil
 }
@@ -188,9 +190,9 @@ func (b *Broker) publishToMQTT(message types.MQTTPublishMessage) {
 	}
 }
 
-// handleNewMember will receive cluster member which just joined cluster.
+// sendRetained will receive cluster member which needs to sync retained messages.
 // We will send all localy retained messages to new node and sync it with rest of the cluster.
-func (b *Broker) handleNewMember(member string) {
+func (b *Broker) sendRetained(member string) {
 	for _, message := range b.Messages("#") {
 		m := types.DiscoveryPublishMessage{
 			Payload: message.Payload,
@@ -203,16 +205,46 @@ func (b *Broker) handleNewMember(member string) {
 	}
 }
 
-func (b *Broker) eventLoop(ctx context.Context, chFromCluster chan bus.Event, chNewMember chan bus.Event) {
+func (b *Broker) calculateRetainedHash() {
+	retainedHash := sha256.New()
+	retainedMessages := []types.DiscoveryPublishMessage{}
+	for _, message := range b.Messages("#") {
+		m := types.DiscoveryPublishMessage{
+			Payload: message.Payload,
+			Topic:   message.TopicName,
+			Retain:  message.FixedHeader.Retain,
+			Qos:     message.FixedHeader.Qos,
+		}
+		retainedMessages = append(retainedMessages, m)
+	}
+	sort.SliceStable(retainedMessages, func(i, j int) bool {
+		return retainedMessages[i].Topic < retainedMessages[j].Topic
+	})
+
+	for _, message := range retainedMessages {
+		data, err := json.Marshal(message)
+		if err != nil {
+			log.Printf("unable to marshal message during retained hash calucation: %v", err)
+			return
+		}
+		retainedHash.Write(data)
+	}
+	//log.Printf("new retained hash %x", retainedHash.Sum(nil))
+	b.bus.Publish("discovery:retained_hash", fmt.Sprintf("%x", retainedHash.Sum(nil)))
+}
+
+func (b *Broker) eventLoop(ctx context.Context, chFromCluster chan bus.Event, chBrokerSendRetained chan bus.Event, chBrokerPKRetained chan bus.Event) {
 	log.Printf("starting eventloop")
 	for {
 		select {
 		case event := <-chFromCluster:
 			message := event.Data.(types.MQTTPublishMessage)
 			b.publishToMQTT(message)
-		case event := <-chNewMember:
+		case event := <-chBrokerSendRetained:
 			member := event.Data.(string)
-			b.handleNewMember(member)
+			b.sendRetained(member)
+		case <-chBrokerPKRetained:
+			b.calculateRetainedHash()
 		case <-ctx.Done():
 			log.Printf("stopping eventloop")
 			return

@@ -41,7 +41,7 @@ func TestReadyHandler(t *testing.T) {
 		Domain:           "test",
 		MemberListConfig: mlConfig,
 		Bus:              evBus,
-		SubscriptionSize: map[string]int{"cluster:message_to": 1024},
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
 	})
 	if err != nil {
 		t.Fatalf("discovery.New error: %s", err)
@@ -92,7 +92,7 @@ func TestHealthzHandler(t *testing.T) {
 		Domain:           "test",
 		MemberListConfig: mlConfig,
 		Bus:              evBus,
-		SubscriptionSize: map[string]int{"cluster:message_to": 1024},
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
 	})
 	if err != nil {
 		t.Fatalf("discovery.New error: %s", err)

@@ -295,7 +295,7 @@ func TestNewRouter(t *testing.T) {
 		Domain:           "test",
 		MemberListConfig: mlConfig,
 		Bus:              evBus,
-		SubscriptionSize: map[string]int{"cluster:message_to": 1024},
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
 	})
 	require.Nil(t, err)
 	defer discoCtxCancel()
@@ -304,7 +304,7 @@ func TestNewRouter(t *testing.T) {
 	b, brokerCtxCancel, err := broker.New(&broker.Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
 	})
 	defer brokerCtxCancel()
 	defer b.Shutdown()

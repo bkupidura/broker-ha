@@ -58,12 +58,13 @@ func getConfig() (*viper.Viper, error) {
 	config.AutomaticEnv()
 
 	config.SetDefault("mqtt.port", 1883)
-	config.SetDefault("mqtt.subscription_size", map[string]interface{}{"cluster:message_from": 1024, "cluster:new_member": 10})
+	config.SetDefault("mqtt.subscription_size", map[string]interface{}{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100})
 
 	config.SetDefault("cluster.expected_members", 3)
 	config.SetDefault("cluster.config.probe_interval", 500)
+	config.SetDefault("cluster.config.push_pull_interval", 30000)
 
-	config.SetDefault("discovery.subscription_size", map[string]interface{}{"cluster:message_to": 1024})
+	config.SetDefault("discovery.subscription_size", map[string]interface{}{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10})
 
 	if err := config.ReadInConfig(); err != nil {
 		log.Printf("unable to read config file, starting with defaults: %s", err)

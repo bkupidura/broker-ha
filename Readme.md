@@ -243,7 +243,10 @@ Events are passed to subscribers over golang channel.
 List of channels:
 - `cluster:message_from` - event is generated when new MQTT message from cluster is received. Message will be published to local broker instance.
 - `cluster:message_to` - event is generated when new MQTT message is published to broker. Message will be published to cluster for other instances.
-- `cluster:new_member` - event is generated when new member joins cluster.
+- `discovery:request_retained` - event is generated when node needs to synchronize retained messsages from other cluster member.
+- `discovery:retained_hash` - event is generated when new retained messages hash is calculated by broker.
+- `broker:send_retained` - event is generated to start sending retained messages to other cluster member.
+- `broker:pk_retained` - event is generated when broker retain message.
 
 ## HTTP
 

@@ -3,6 +3,7 @@ package discovery
 import (
 	"encoding/json"
 	"log"
+	"sort"
 	"sync"
 	"time"
 
@@ -47,10 +48,20 @@ func (r *retainedHash) Delete(node string) {
 }
 
 func (r *retainedHash) PopularHash() (string, []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	var mostPopularHash string
 	hashNodeMap := map[string][]string{}
 
-	for node, hashEntry := range r.hashMap {
+	nodes := make([]string, 0, len(r.hashMap))
+	for node := range r.hashMap {
+		nodes = append(nodes, node)
+	}
+	sort.Strings(nodes)
+
+	for _, node := range nodes {
+		hashEntry := r.Get(node)
 		hashNodeMap[hashEntry.Hash] = append(hashNodeMap[hashEntry.Hash], node)
 		if len(hashNodeMap[hashEntry.Hash]) > len(hashNodeMap[mostPopularHash]) {
 			mostPopularHash = hashEntry.Hash
@@ -65,10 +76,6 @@ type delegate struct {
 	bus          *bus.Bus
 	name         string
 	retainedHash *retainedHash
-}
-
-func (d *delegate) RetainedHash() *retainedHash {
-	return d.retainedHash
 }
 
 func (d *delegate) NodeMeta(limit int) []byte {
@@ -96,6 +103,12 @@ func (d *delegate) NotifyMsg(b []byte) {
 		for _, message := range messages {
 			d.bus.Publish("cluster:message_from", message)
 		}
+	case queueDataTypes["SendRetained"]:
+		if len(messageData) < 1 {
+			log.Printf("received malformed message from cluster for SendRetained")
+			return
+		}
+		d.bus.Publish("broker:send_retained", string(messageData))
 	default:
 		log.Printf("received unknown message type from cluster: %c", messageType)
 	}
@@ -110,7 +123,7 @@ func (d *delegate) LocalState(join bool) []byte {
 		d.name,
 		d.retainedHash.Get(d.name).Hash,
 	}
-	data, err := json.Marshal(state)
+	data, err := jsonMarshal(state)
 	if err != nil {
 		return []byte{}
 	}
@@ -119,26 +132,26 @@ func (d *delegate) LocalState(join bool) []byte {
 
 func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 	state := [2]string{}
-	err := json.Unmarshal(buf, &state)
+	err := jsonUnmarshal(buf, &state)
 	if err != nil {
 		return
 	}
 
-	log.Printf("%s old retainedHash: %+v", d.name, d.retainedHash)
 	d.retainedHash.Set(state[0], state[1])
-	log.Printf("%s new retainedHash: %+v", d.name, d.retainedHash)
+	//	log.Printf("retainedHash: %+v", d.retainedHash)
 
 	localHashEntry := d.retainedHash.Get(d.name)
 	popularHash, nodes := d.retainedHash.PopularHash()
 
-	log.Printf("%s localHash: %+v popularHash: %+v", d.name, localHashEntry.Hash, popularHash)
+	//	log.Printf("localHash: %+v popularHash: %+v", localHashEntry.Hash, popularHash)
 
 	if time.Now().Unix()-localHashEntry.LastUpdated < 5 {
 		return
 	}
 
 	if localHashEntry.Hash != popularHash {
-		log.Printf("%s sync nodes: %+v", d.name, nodes)
+		log.Printf("syncing retained messages from %v", nodes)
+		d.bus.Publish("discovery:request_retained", nodes[0])
 	}
 }
 
@@ -155,14 +168,13 @@ func (d *delegateEvent) NotifyJoin(n *memberlist.Node) {
 	if n.String() == d.name {
 		return
 	}
-	log.Printf("new cluster member %s", n.Address())
-	d.bus.Publish("cluster:new_member", n.Address())
+	log.Printf("new cluster member %s", n.String())
 }
 
 // Notifyleave is executed when node leave cluster.
 func (d *delegateEvent) NotifyLeave(n *memberlist.Node) {
 	d.retainedHash.Delete(n.String())
-	log.Printf("cluster member %s leaved", n.Address())
+	log.Printf("cluster member %s leaved", n.String())
 }
 
 func (d *delegateEvent) NotifyUpdate(n *memberlist.Node) {}

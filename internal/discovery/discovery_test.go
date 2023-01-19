@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,136 +19,6 @@ import (
 	"brokerha/internal/types"
 )
 
-/*
-func TestGossip(t *testing.T) {
-	evBus1 := bus.New()
-	evBus2 := bus.New()
-	evBus3 := bus.New()
-
-	retainedHash1 := &retainedHash{
-		hashMap: map[string]retainedHashEntry{
-			"node1": retainedHashEntry{
-				Hash: "hash1",
-			},
-		},
-	}
-	retainedHash2 := &retainedHash{
-		hashMap: map[string]retainedHashEntry{
-			"node2": retainedHashEntry{
-				Hash: "hash2",
-			},
-		},
-	}
-	retainedHash3 := &retainedHash{
-		hashMap: map[string]retainedHashEntry{
-			"node3": retainedHashEntry{
-				Hash: "hash2",
-			},
-		},
-	}
-
-	mlConfig1 := memberlist.DefaultLocalConfig()
-	mlConfig1.Name = "node1"
-	mlConfig1.BindPort = 7946
-	mlConfig1.AdvertisePort = 7946
-	mlConfig1.BindAddr = "127.0.0.1"
-	mlConfig1.LogOutput = ioutil.Discard
-	mlConfig1.Events = &delegateEvent{
-		name:         "node1",
-		bus:          evBus1,
-		retainedHash: retainedHash1,
-	}
-	mlConfig1.Delegate = &delegate{
-		name:         "node1",
-		bus:          evBus1,
-		retainedHash: retainedHash1,
-	}
-	ml1, err := memberlist.Create(mlConfig1)
-	require.Nil(t, err)
-	_ = &Discovery{
-		domain: "test",
-		selfAddress: map[string]struct{}{
-			"127.0.0.1:7946": {},
-		},
-		config: mlConfig1,
-		ml:     ml1,
-		bus:    evBus1,
-	}
-	defer ml1.Shutdown()
-
-	mlConfig2 := memberlist.DefaultLocalConfig()
-	mlConfig2.Name = "node2"
-	mlConfig2.BindPort = 7947
-	mlConfig2.AdvertisePort = 7947
-	mlConfig2.BindAddr = "127.0.0.1"
-	mlConfig2.LogOutput = ioutil.Discard
-	mlConfig2.Events = &delegateEvent{
-		name:         "node2",
-		bus:          evBus2,
-		retainedHash: retainedHash2,
-	}
-	mlConfig2.Delegate = &delegate{
-		name:         "node2",
-		bus:          evBus2,
-		retainedHash: retainedHash2,
-	}
-	ml2, err := memberlist.Create(mlConfig2)
-	require.Nil(t, err)
-	_ = &Discovery{
-		domain: "test",
-		selfAddress: map[string]struct{}{
-			"127.0.0.1:7947": {},
-		},
-		config: mlConfig2,
-		ml:     ml2,
-		bus:    evBus2,
-	}
-	defer ml2.Shutdown()
-
-	mlConfig3 := memberlist.DefaultLocalConfig()
-	mlConfig3.Name = "node3"
-	mlConfig3.BindPort = 7948
-	mlConfig3.AdvertisePort = 7948
-	mlConfig3.BindAddr = "127.0.0.1"
-	mlConfig3.LogOutput = ioutil.Discard
-	mlConfig3.Events = &delegateEvent{
-		name:         "node3",
-		bus:          evBus3,
-		retainedHash: retainedHash3,
-	}
-	mlConfig3.Delegate = &delegate{
-		name:         "node3",
-		bus:          evBus3,
-		retainedHash: retainedHash3,
-	}
-	ml3, err := memberlist.Create(mlConfig3)
-	require.Nil(t, err)
-	_ = &Discovery{
-		domain: "test",
-		selfAddress: map[string]struct{}{
-			"127.0.0.1:7948": {},
-		},
-		config: mlConfig3,
-		ml:     ml3,
-		bus:    evBus3,
-	}
-	defer ml3.Shutdown()
-
-	n, err := ml1.Join([]string{"127.0.0.1:7947", "127.0.0.1:7948"})
-	require.Nil(t, err)
-	require.Equal(t, 2, n)
-
-	time.Sleep(25 * time.Second)
-
-	err = ml1.Shutdown()
-	require.Nil(t, err)
-
-	time.Sleep(5 * time.Second)
-
-	log.Printf("retainedHash 2 %+v\n", retainedHash2)
-	log.Printf("retainedHash 3 %+v\n", retainedHash3)
-}*/
-
 func TestNew(t *testing.T) {
 	tests := []struct {
 		mockNetInterfaceAddrs func() ([]net.Addr, error)
@@ -156,50 +27,6 @@ func TestNew(t *testing.T) {
 		inputOptions          *Options
 		inputBeforeTest       func(*bus.Bus)
 	}{
-		{
-			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
-				return nil, errors.New("netInterfaceAddrs mock error")
-			},
-			expectedErr: errors.New("netInterfaceAddrs mock error"),
-			inputOptions: &Options{
-				Domain:           "test",
-				MemberListConfig: memberlist.DefaultLocalConfig(),
-				SubscriptionSize: map[string]int{"cluster:message_to": 1024},
-			},
-		},
-		{
-			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
-				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
-				ip1.IP = net.ParseIP("10.10.10.10")
-				return []net.Addr{ip1}, nil
-			},
-			mockMemberlistCreate: memberlist.Create,
-			inputOptions: &Options{
-				Domain:           "test",
-				MemberListConfig: memberlist.DefaultLocalConfig(),
-				SubscriptionSize: map[string]int{"cluster:message_to": 1024},
-			},
-			inputBeforeTest: func(b *bus.Bus) {
-				b.Subscribe("cluster:message_to", "discovery", 0)
-			},
-			expectedErr: errors.New("subscriber discovery already exists"),
-		},
-		{
-			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
-				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
-				ip1.IP = net.ParseIP("10.10.10.10")
-				return []net.Addr{ip1}, nil
-			},
-			mockMemberlistCreate: func(*memberlist.Config) (*memberlist.Memberlist, error) {
-				return nil, errors.New("memberlistCreate mock error")
-			},
-			inputOptions: &Options{
-				Domain:           "test",
-				MemberListConfig: memberlist.DefaultLocalConfig(),
-				SubscriptionSize: map[string]int{"cluster:message_to": 1024},
-			},
-			expectedErr: errors.New("memberlistCreate mock error"),
-		},
 		{
 			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
 				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
@@ -239,6 +66,112 @@ func TestNew(t *testing.T) {
 				MemberListConfig: memberlist.DefaultLocalConfig(),
 				SubscriptionSize: map[string]int{"cluster:message_to": 1024},
 			},
+			expectedErr: errors.New("subscription size for discovery:request_retained not provided"),
+		},
+		{
+			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
+				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
+				ip1.IP = net.ParseIP("10.10.10.10")
+				return []net.Addr{ip1}, nil
+			},
+			mockMemberlistCreate: memberlist.Create,
+			inputOptions: &Options{
+				Domain:           "test",
+				MemberListConfig: memberlist.DefaultLocalConfig(),
+				SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10},
+			},
+			expectedErr: errors.New("subscription size for discovery:retained_hash not provided"),
+		},
+		{
+			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
+				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
+				ip1.IP = net.ParseIP("10.10.10.10")
+				return []net.Addr{ip1}, nil
+			},
+			mockMemberlistCreate: memberlist.Create,
+			inputOptions: &Options{
+				Domain:           "test",
+				MemberListConfig: memberlist.DefaultLocalConfig(),
+				SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
+			},
+			inputBeforeTest: func(b *bus.Bus) {
+				b.Subscribe("cluster:message_to", "discovery", 0)
+			},
+			expectedErr: errors.New("subscriber discovery already exists"),
+		},
+		{
+			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
+				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
+				ip1.IP = net.ParseIP("10.10.10.10")
+				return []net.Addr{ip1}, nil
+			},
+			mockMemberlistCreate: memberlist.Create,
+			inputOptions: &Options{
+				Domain:           "test",
+				MemberListConfig: memberlist.DefaultLocalConfig(),
+				SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
+			},
+			inputBeforeTest: func(b *bus.Bus) {
+				b.Subscribe("discovery:request_retained", "discovery", 0)
+			},
+			expectedErr: errors.New("subscriber discovery already exists"),
+		},
+		{
+			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
+				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
+				ip1.IP = net.ParseIP("10.10.10.10")
+				return []net.Addr{ip1}, nil
+			},
+			mockMemberlistCreate: memberlist.Create,
+			inputOptions: &Options{
+				Domain:           "test",
+				MemberListConfig: memberlist.DefaultLocalConfig(),
+				SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
+			},
+			inputBeforeTest: func(b *bus.Bus) {
+				b.Subscribe("discovery:retained_hash", "discovery", 0)
+			},
+			expectedErr: errors.New("subscriber discovery already exists"),
+		},
+		{
+			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
+				return nil, errors.New("netInterfaceAddrs mock error")
+			},
+			expectedErr: errors.New("netInterfaceAddrs mock error"),
+			inputOptions: &Options{
+				Domain:           "test",
+				MemberListConfig: memberlist.DefaultLocalConfig(),
+				SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
+			},
+		},
+		{
+			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
+				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
+				ip1.IP = net.ParseIP("10.10.10.10")
+				return []net.Addr{ip1}, nil
+			},
+			mockMemberlistCreate: func(*memberlist.Config) (*memberlist.Memberlist, error) {
+				return nil, errors.New("memberlistCreate mock error")
+			},
+			inputOptions: &Options{
+				Domain:           "test",
+				MemberListConfig: memberlist.DefaultLocalConfig(),
+				SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
+			},
+			expectedErr: errors.New("memberlistCreate mock error"),
+		},
+		{
+			mockNetInterfaceAddrs: func() ([]net.Addr, error) {
+				_, ip1, _ := net.ParseCIDR("10.10.10.10/24")
+				ip1.IP = net.ParseIP("10.10.10.10")
+				return []net.Addr{ip1}, nil
+			},
+			mockMemberlistCreate: memberlist.Create,
+			inputOptions: &Options{
+				Domain:           "test",
+				MemberListConfig: memberlist.DefaultLocalConfig(),
+				SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
+			},
 		},
 	}
 
@@ -249,9 +182,15 @@ func TestNew(t *testing.T) {
 		}
 		if test.mockNetInterfaceAddrs != nil {
 			netInterfaceAddrs = test.mockNetInterfaceAddrs
+			defer func() {
+				netInterfaceAddrs = net.InterfaceAddrs
+			}()
 		}
 		if test.mockMemberlistCreate != nil {
 			memberlistCreate = test.mockMemberlistCreate
+			defer func() {
+				memberlistCreate = memberlist.Create
+			}()
 		}
 		test.inputOptions.Bus = b
 		output, cancelFunc, err := New(test.inputOptions)
@@ -271,18 +210,15 @@ func TestShutdown(t *testing.T) {
 	mlConfig.Name = "node2"
 	mlConfig.BindAddr = "127.0.0.1"
 	mlConfig.LogOutput = ioutil.Discard
-	ml, err := memberlist.Create(mlConfig)
-	if err != nil {
-		t.Fatalf("memberlist.Create error: %s", err)
-	}
-	disco := &Discovery{
-		domain: "test",
-		selfAddress: map[string]struct{}{
-			"127.0.0.1:7946": {},
-		},
-		config: mlConfig,
-		ml:     ml,
-	}
+	b := bus.New()
+	disco, cancelFunc, err := New(&Options{
+		Domain:           "test",
+		MemberListConfig: mlConfig,
+		Bus:              b,
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
+	})
+	require.Nil(t, err)
+	defer cancelFunc()
 	require.Nil(t, disco.Shutdown())
 }
 
@@ -291,19 +227,16 @@ func TestLeave(t *testing.T) {
 	mlConfig.Name = "node2"
 	mlConfig.BindAddr = "127.0.0.1"
 	mlConfig.LogOutput = ioutil.Discard
-	ml, err := memberlist.Create(mlConfig)
-	if err != nil {
-		t.Fatalf("memberlist.Create error: %s", err)
-	}
-	disco := &Discovery{
-		domain: "test",
-		selfAddress: map[string]struct{}{
-			"127.0.0.1:7946": {},
-		},
-		config: mlConfig,
-		ml:     ml,
-	}
-	defer ml.Shutdown()
+	b := bus.New()
+	disco, cancelFunc, err := New(&Options{
+		Domain:           "test",
+		MemberListConfig: mlConfig,
+		Bus:              b,
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
+	})
+	require.Nil(t, err)
+	defer cancelFunc()
+	defer disco.Shutdown()
 	require.Nil(t, disco.Leave(100))
 }
 
@@ -323,21 +256,19 @@ func TestJoin(t *testing.T) {
 	mlConfig := memberlist.DefaultLocalConfig()
 	mlConfig.Name = "node2"
 	mlConfig.BindAddr = "127.0.0.1"
+	mlConfig.BindPort = 7946
+	mlConfig.AdvertisePort = 7946
 	mlConfig.LogOutput = ioutil.Discard
-	ml, err := memberlist.Create(mlConfig)
-	if err != nil {
-		t.Fatalf("memberlist.Create error: %s", err)
-	}
-
-	disco := &Discovery{
-		domain: "test",
-		selfAddress: map[string]struct{}{
-			"127.0.0.1:7946": {},
-		},
-		config: mlConfig,
-		ml:     ml,
-	}
-	defer ml.Shutdown()
+	b := bus.New()
+	disco, cancelFunc, err := New(&Options{
+		Domain:           "test",
+		MemberListConfig: mlConfig,
+		Bus:              b,
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
+	})
+	require.Nil(t, err)
+	defer cancelFunc()
+	defer disco.Shutdown()
 
 	joinedMembers, err := disco.Join([]string{"127.0.0.1:7948"})
 	require.Equal(t, "1 error occurred:\n\t* Failed to join 127.0.0.1:7948: dial tcp 127.0.0.1:7948: connect: connection refused\n\n", err.Error())
@@ -353,20 +284,16 @@ func TestGetHealthScore(t *testing.T) {
 	mlConfig.Name = "node1"
 	mlConfig.BindAddr = "127.0.0.1"
 	mlConfig.LogOutput = ioutil.Discard
-	ml, err := memberlist.Create(mlConfig)
-	if err != nil {
-		t.Fatalf("memberlist.Create error: %s", err)
-	}
-	defer ml.Shutdown()
-
-	disco := &Discovery{
-		domain: "test",
-		selfAddress: map[string]struct{}{
-			"127.0.0.1:7946": {},
-		},
-		config: mlConfig,
-		ml:     ml,
-	}
+	b := bus.New()
+	disco, cancelFunc, err := New(&Options{
+		Domain:           "test",
+		MemberListConfig: mlConfig,
+		Bus:              b,
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
+	})
+	require.Nil(t, err)
+	defer cancelFunc()
+	defer disco.Shutdown()
 
 	require.Equal(t, 0, disco.GetHealthScore())
 }
@@ -397,6 +324,12 @@ func TestSendReliable(t *testing.T) {
 			inputData:     []byte("message"),
 			expectedData:  string(append([]byte{1}, []byte(`message`)...)),
 		},
+		{
+			inputMember:   &memberlist.Node{Addr: net.ParseIP("127.0.0.1"), Port: 7947},
+			inputDataType: "SendRetained",
+			inputData:     []byte("retained"),
+			expectedData:  string(append([]byte{2}, []byte(`retained`)...)),
+		},
 	}
 	md := &mockDelegate{}
 	c1 := memberlist.DefaultLocalConfig()
@@ -416,20 +349,16 @@ func TestSendReliable(t *testing.T) {
 	mlConfig.Name = "node2"
 	mlConfig.BindAddr = "127.0.0.1"
 	mlConfig.LogOutput = ioutil.Discard
-	ml, err := memberlist.Create(mlConfig)
-	if err != nil {
-		t.Fatalf("memberlist.Create error: %s", err)
-	}
-	defer ml.Shutdown()
-
-	disco := &Discovery{
-		domain: "test",
-		selfAddress: map[string]struct{}{
-			"127.0.0.1:7946": {},
-		},
-		config: mlConfig,
-		ml:     ml,
-	}
+	b := bus.New()
+	disco, cancelFunc, err := New(&Options{
+		Domain:           "test",
+		MemberListConfig: mlConfig,
+		Bus:              b,
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
+	})
+	require.Nil(t, err)
+	defer cancelFunc()
+	defer disco.Shutdown()
 
 	joinedMembers, err := disco.Join([]string{"127.0.0.1:7947"})
 	require.Nil(t, err)
@@ -464,20 +393,16 @@ func TestMembers(t *testing.T) {
 	mlConfig.Name = "node2"
 	mlConfig.BindAddr = "127.0.0.1"
 	mlConfig.LogOutput = ioutil.Discard
-	ml, err := memberlist.Create(mlConfig)
-	if err != nil {
-		t.Fatalf("memberlist.Create error: %s", err)
-	}
-	defer ml.Shutdown()
-
-	disco := &Discovery{
-		domain: "test",
-		selfAddress: map[string]struct{}{
-			"127.0.0.1:7946": {},
-		},
-		config: mlConfig,
-		ml:     ml,
-	}
+	b := bus.New()
+	disco, cancelFunc, err := New(&Options{
+		Domain:           "test",
+		MemberListConfig: mlConfig,
+		Bus:              b,
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
+	})
+	require.Nil(t, err)
+	defer cancelFunc()
+	defer disco.Shutdown()
 
 	joinedMembers, err := disco.Join([]string{"127.0.0.1:7947"})
 	require.Nil(t, err)
@@ -494,15 +419,24 @@ func TestFormCluster(t *testing.T) {
 		mockNetLookupIP       func(string) ([]net.IP, error)
 		inputMemberlistConfig func() *memberlist.Config
 		expectedErr           error
-		expectedLog           string
+		expectedLog           []string
 	}{
 		{
 			mockNetLookupSRV: func(string, string, string) (string, []*net.SRV, error) {
 				return "", nil, errors.New("mockNetLookupSRV error")
 			},
-			expectedLog: "unable to perform discovery: mockNetLookupSRV error\nsleeping for 1s before forming cluster\nforming new cluster\n",
+			expectedLog: []string{
+				"",
+				"unable to perform discovery: mockNetLookupSRV error",
+				"sleeping for 1s before forming cluster",
+				"starting eventloop",
+				"forming new cluster",
+				"stopping eventloop",
+			},
 			inputMemberlistConfig: func() *memberlist.Config {
 				mlConfig := memberlist.DefaultLocalConfig()
+				mlConfig.BindAddr = "127.0.0.1"
+				mlConfig.Name = "node2"
 				return mlConfig
 			},
 		},
@@ -510,7 +444,7 @@ func TestFormCluster(t *testing.T) {
 			mockNetLookupSRV: func(string, string, string) (string, []*net.SRV, error) {
 				a := []*net.SRV{
 					{Target: "2-2-2-2.some-service.svc.cluster.local", Port: 7947},
-					{Target: "10-10-10-10.some-service.svc.cluster.local", Port: 7946},
+					{Target: "127-0-0-1.some-service.svc.cluster.local", Port: 7946},
 				}
 				return "", a, nil
 			},
@@ -519,12 +453,17 @@ func TestFormCluster(t *testing.T) {
 				switch domain {
 				case "2-2-2-2.some-service.svc.cluster.local":
 					a = append(a, net.ParseIP("2.2.2.2"))
-				case "10-10-10-10.some-service.svc.cluster.local":
-					a = append(a, net.ParseIP("10.10.10.10"))
+				case "127-0-0-1.some-service.svc.cluster.local":
+					a = append(a, net.ParseIP("127.0.0.1"))
 				}
 				return a, nil
 			},
-			expectedLog: "joining existing cluster with [2.2.2.2:7947]\n",
+			expectedLog: []string{
+				"",
+				"joining existing cluster with [2.2.2.2:7947]",
+				"starting eventloop",
+				"stopping eventloop",
+			},
 			expectedErr: multierror.Append(errs, errors.New("Failed to join 2.2.2.2:7947: dial tcp 2.2.2.2:7947: i/o timeout")),
 			inputMemberlistConfig: func() *memberlist.Config {
 				mlConfig := memberlist.DefaultLocalConfig()
@@ -537,33 +476,6 @@ func TestFormCluster(t *testing.T) {
 			mockNetLookupSRV: func(string, string, string) (string, []*net.SRV, error) {
 				a := []*net.SRV{
 					{Target: "127-0-0-1.some-service.svc.cluster.local", Port: 7947},
-					{Target: "10-10-10-10.some-service.svc.cluster.local", Port: 7946},
-				}
-				return "", a, nil
-			},
-			mockNetLookupIP: func(domain string) ([]net.IP, error) {
-				a := []net.IP{}
-				switch domain {
-				case "127-0-0-1.some-service.svc.cluster.local":
-					a = append(a, net.ParseIP("127.0.0.1"))
-				case "10-10-10-10.some-service.svc.cluster.local":
-					a = append(a, net.ParseIP("10.10.10.10"))
-				}
-				return a, nil
-			},
-			expectedLog: "joining existing cluster with [127.0.0.1:7947]\n",
-			inputMemberlistConfig: func() *memberlist.Config {
-				mlConfig := memberlist.DefaultLocalConfig()
-				mlConfig.BindAddr = "127.0.0.1"
-				mlConfig.Name = "node2"
-				return mlConfig
-			},
-		},
-		{
-			mockNetLookupSRV: func(string, string, string) (string, []*net.SRV, error) {
-				a := []*net.SRV{
-					{Target: "127-0-0-1.some-service.svc.cluster.local", Port: 7947},
-					{Target: "10-10-10-10.some-service.svc.cluster.local", Port: 7946},
 					{Target: "2-2-2-2.some-service.svc.cluster.local", Port: 7946},
 				}
 				return "", a, nil
@@ -573,14 +485,18 @@ func TestFormCluster(t *testing.T) {
 				switch domain {
 				case "127-0-0-1.some-service.svc.cluster.local":
 					a = append(a, net.ParseIP("127.0.0.1"))
-				case "10-10-10-10.some-service.svc.cluster.local":
-					a = append(a, net.ParseIP("10.10.10.10"))
 				case "2-2-2-2.some-service.svc.cluster.local":
 					a = append(a, net.ParseIP("2.2.2.2"))
 				}
 				return a, nil
 			},
-			expectedLog: "joining existing cluster with [127.0.0.1:7947 2.2.2.2:7946]\n",
+			expectedLog: []string{
+				"",
+				"joining existing cluster with [127.0.0.1:7947 2.2.2.2:7946]",
+				"new cluster member node1",
+				"starting eventloop",
+				"stopping eventloop",
+			},
 			inputMemberlistConfig: func() *memberlist.Config {
 				mlConfig := memberlist.DefaultLocalConfig()
 				mlConfig.BindAddr = "127.0.0.1"
@@ -612,32 +528,37 @@ func TestFormCluster(t *testing.T) {
 
 		if test.mockNetLookupSRV != nil {
 			netLookupSRV = test.mockNetLookupSRV
+			defer func() {
+				netLookupSRV = net.LookupSRV
+			}()
 		}
 		if test.mockNetLookupIP != nil {
 			netLookupIP = test.mockNetLookupIP
+			defer func() {
+				netLookupIP = net.LookupIP
+			}()
 		}
 
 		mlConfig := test.inputMemberlistConfig()
 		mlConfig.LogOutput = ioutil.Discard
-		ml, err := memberlist.Create(mlConfig)
-		if err != nil {
-			t.Fatalf("memberlist.Create error: %s", err)
-		}
-
-		disco := &Discovery{
-			domain: "test",
-			selfAddress: map[string]struct{}{
-				"10.10.10.10:7946": {},
-			},
-			config: mlConfig,
-			ml:     ml,
-		}
+		b := bus.New()
+		disco, cancelFunc, err := New(&Options{
+			Domain:           "test",
+			MemberListConfig: mlConfig,
+			Bus:              b,
+			SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
+		})
+		require.Nil(t, err)
 
 		err = disco.FormCluster(1, 2)
-		ml.Shutdown()
+		cancelFunc()
+		disco.Shutdown()
 
 		require.Equal(t, test.expectedErr, err)
-		require.Equal(t, test.expectedLog, logOutput.String())
+		for _, line := range strings.Split(logOutput.String(), "\n") {
+			require.Contains(t, test.expectedLog, line)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -699,9 +620,9 @@ func TestPublishToCluster(t *testing.T) {
 	}{
 		{
 			inputMessage: []types.DiscoveryPublishMessage{
-				{Node: []string{"127.0.0.1:7946"}},
+				{Node: []string{"node1"}},
 			},
-			expectedLog: "unable to marshal to cluster message 127.0.0.1:7946: mockJsonMarshal error\n",
+			expectedLog: "unable to marshal to cluster message node1: mockJsonMarshal error\n",
 			jsonMarshal: func(any) ([]byte, error) {
 				return nil, errors.New("mockJsonMarshal error")
 			},
@@ -711,9 +632,9 @@ func TestPublishToCluster(t *testing.T) {
 		},
 		{
 			inputMessage: []types.DiscoveryPublishMessage{
-				{Node: []string{"127.0.0.1:7946"}},
+				{Node: []string{"node1"}},
 			},
-			expectedLog: "unable to publish message to cluster member 127.0.0.1:7946 (retries 1/3): unknown data type MQTTPublish\nunable to publish message to cluster member 127.0.0.1:7946 (retries 2/3): unknown data type MQTTPublish\nunable to publish message to cluster member 127.0.0.1:7946 (retries 3/3): unknown data type MQTTPublish\n",
+			expectedLog: "unable to publish message to cluster member node1 (retries 1/3): unknown data type MQTTPublish\nunable to publish message to cluster member node1 (retries 2/3): unknown data type MQTTPublish\nunable to publish message to cluster member node1 (retries 3/3): unknown data type MQTTPublish\n",
 			jsonMarshal: json.Marshal,
 			queueDataTypesFunc: func() {
 				queueDataTypes = map[string]byte{}
@@ -721,10 +642,10 @@ func TestPublishToCluster(t *testing.T) {
 		},
 		{
 			inputMessage: []types.DiscoveryPublishMessage{
-				{Node: []string{"127.0.0.1:7946"}},
+				{Node: []string{"node1"}},
 			},
-			expectedLog:  "unable to publish message to cluster member 127.0.0.1:7946 (retries 1/3): unknown data type MQTTPublish\n",
-			expectedData: string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			expectedLog:  "unable to publish message to cluster member node1 (retries 1/3): unknown data type MQTTPublish\n",
+			expectedData: string(append([]byte{1}, []byte(`[{"Node":["node1"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
 			jsonMarshal:  json.Marshal,
 			queueDataTypesFunc: func() {
 				queueDataTypes = map[string]byte{}
@@ -734,9 +655,9 @@ func TestPublishToCluster(t *testing.T) {
 		},
 		{
 			inputMessage: []types.DiscoveryPublishMessage{
-				{Node: []string{"127.0.0.1:7946"}},
+				{Node: []string{"node1"}},
 			},
-			expectedData: string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			expectedData: string(append([]byte{1}, []byte(`[{"Node":["node1"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
 			jsonMarshal:  json.Marshal,
 			queueDataTypesFunc: func() {
 				queueDataTypes = map[string]byte{"MQTTPublish": 1}
@@ -765,11 +686,11 @@ func TestPublishToCluster(t *testing.T) {
 		},
 		{
 			inputMessage: []types.DiscoveryPublishMessage{
-				{Node: []string{"127.0.0.1:7946"}},
-				{Node: []string{"127.0.0.1:7947"}},
+				{Node: []string{"node1"}},
+				{Node: []string{"node2"}},
 				{},
 			},
-			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["node1"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
 			jsonMarshal:  json.Marshal,
 			queueDataTypesFunc: func() {
 				queueDataTypes = map[string]byte{"MQTTPublish": 1}
@@ -777,12 +698,12 @@ func TestPublishToCluster(t *testing.T) {
 		},
 		{
 			inputMessage: []types.DiscoveryPublishMessage{
-				{Node: []string{"127.0.0.1:7946"}},
+				{Node: []string{"node1"}},
 				{},
-				{Node: []string{"127.0.0.1:7946"}},
+				{Node: []string{"node1"}},
 				{},
 			},
-			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			expectedData: string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["node1"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["node1"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
 			jsonMarshal:  json.Marshal,
 			queueDataTypesFunc: func() {
 				queueDataTypes = map[string]byte{"MQTTPublish": 1}
@@ -790,12 +711,12 @@ func TestPublishToCluster(t *testing.T) {
 		},
 		{
 			inputMessage: []types.DiscoveryPublishMessage{
-				{Node: []string{"127.0.0.1:7946"}},
-				{Node: []string{"127.0.0.1:7947"}},
-				{Node: []string{"127.0.0.1:7946"}},
-				{Node: []string{"127.0.0.1:7947"}},
+				{Node: []string{"node1"}},
+				{Node: []string{"node2"}},
+				{Node: []string{"node1"}},
+				{Node: []string{"node2"}},
 			},
-			expectedData: string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["127.0.0.1:7946"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
+			expectedData: string(append([]byte{1}, []byte(`[{"Node":["node1"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["node1"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...)),
 			jsonMarshal:  json.Marshal,
 			queueDataTypesFunc: func() {
 				queueDataTypes = map[string]byte{"MQTTPublish": 1}
@@ -843,7 +764,7 @@ func TestPublishToCluster(t *testing.T) {
 		MemberListConfig: c3,
 		Bus:              evBus,
 		Domain:           "test",
-		SubscriptionSize: map[string]int{"cluster:message_to": 1024},
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
 	})
 	require.Nil(t, err)
 	defer disco.Shutdown()
@@ -857,6 +778,9 @@ func TestPublishToCluster(t *testing.T) {
 		logOutput.Reset()
 
 		jsonMarshal = test.jsonMarshal
+		defer func() {
+			jsonMarshal = json.Marshal
+		}()
 		go test.queueDataTypesFunc()
 
 		for _, m := range test.inputMessage {
@@ -873,7 +797,90 @@ func TestPublishToCluster(t *testing.T) {
 		logOutput.Reset()
 		time.Sleep(10 * time.Millisecond)
 	}
+}
 
+func TestEventLoop(t *testing.T) {
+	md := &mockDelegate{}
+	c1 := memberlist.DefaultLocalConfig()
+	c1.BindPort = 7947
+	c1.Name = "node1"
+	c1.BindAddr = "127.0.0.1"
+	c1.LogOutput = ioutil.Discard
+	c1.Delegate = md
+	m1, err := memberlist.Create(c1)
+	if err != nil {
+		t.Fatalf("memberlist.Create error: %s", err)
+	}
+	defer m1.Shutdown()
+
+	mlConfig := memberlist.DefaultLocalConfig()
+	mlConfig.BindPort = 7946
+	mlConfig.Name = "node2"
+	mlConfig.BindAddr = "127.0.0.1"
+	mlConfig.LogOutput = ioutil.Discard
+	evBus := bus.New()
+
+	disco, ctxCancel, err := New(&Options{
+		MemberListConfig: mlConfig,
+		Bus:              evBus,
+		Domain:           "test",
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10},
+	})
+	require.Nil(t, err)
+	defer disco.Shutdown()
+	defer ctxCancel()
+
+	log.SetFlags(0)
+	var logOutput bytes.Buffer
+	log.SetOutput(&logOutput)
+
+	_, err = m1.Join([]string{"127.0.0.1:7946"})
+	require.Nil(t, err)
+
+	evBus.Publish("cluster:message_to", types.DiscoveryPublishMessage{})
+	time.Sleep(10 * time.Millisecond)
+	expectedData := string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...))
+	require.Equal(t, expectedData, string(md.GetData()))
+
+	for _, message := range []types.DiscoveryPublishMessage{
+		{},
+		{Node: []string{}},
+	} {
+		evBus.Publish("cluster:message_to", message)
+	}
+	time.Sleep(10 * time.Millisecond)
+	expectedData = string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...))
+	require.Equal(t, expectedData, string(md.GetData()))
+
+	queueDataTypes = map[string]byte{"MQTTPublish": 1}
+	evBus.Publish("discovery:request_retained", "node1")
+	time.Sleep(10 * time.Millisecond)
+	expectedLog := []string{
+		"",
+		"starting eventloop",
+		"new cluster member node1",
+		"unable to SendRetained to cluster member node1: unknown data type SendRetained",
+	}
+	for _, line := range strings.Split(logOutput.String(), "\n") {
+		require.Contains(t, expectedLog, line)
+	}
+
+	logOutput.Reset()
+	queueDataTypes = map[string]byte{"MQTTPublish": 1, "SendRetained": 2}
+	evBus.Publish("discovery:request_retained", "node1")
+	time.Sleep(10 * time.Millisecond)
+	expectedLog = []string{
+		"",
+		"starting eventloop",
+		"new cluster member node1",
+	}
+	for _, line := range strings.Split(logOutput.String(), "\n") {
+		require.Contains(t, expectedLog, line)
+	}
+
+	evBus.Publish("discovery:retained_hash", "test-hash")
+	time.Sleep(10 * time.Millisecond)
+	require.Equal(t, "test-hash", disco.retainedHash.Get(disco.config.Name).Hash)
 }
 
 func TestGetLocalIPs(t *testing.T) {
@@ -1075,7 +1082,13 @@ func TestGetInitialMemberIPs(t *testing.T) {
 		logOutput.Reset()
 
 		netLookupSRV = test.mockNetLookupSRV
+		defer func() {
+			netLookupSRV = net.LookupSRV
+		}()
 		netLookupIP = test.mockNetLookupIP
+		defer func() {
+			netLookupIP = net.LookupIP
+		}()
 		output, err := getInitialMemberIPs("test")
 		require.Equal(t, test.expectedLog, logOutput.String())
 		require.Equal(t, test.expectedOutput, output)

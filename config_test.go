@@ -87,14 +87,18 @@ func TestGetConfig(t *testing.T) {
                   port: 1883
                   subscription_size:
                     "cluster:message_from": 1024
-                    "cluster:new_member": 10
+                    "broker:send_retained": 10
+                    "broker:pk_retained": 100
                 discovery:
                   subscription_size:
                     "cluster:message_to": 1024
+                    "discovery:request_retained": 10
+                    "discovery:retained_hash": 10
                 cluster:
                   expected_members: 3
                   config:
                     probe_interval: 500
+                    push_pull_interval: 30000
                 `)
 				c.SetConfigType("yaml")
 				c.ReadConfig(bytes.NewBuffer(d))

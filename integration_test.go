@@ -92,14 +92,27 @@ func TestBrokerHA(t *testing.T) {
 
 	require.Equal(t, 2, joinedNodes)
 
-	time.Sleep(2 * time.Second)
+	var brokerHAMember *memberlist.Node
+
+	for _, member := range m1.Members() {
+		if member.Address() != m1.LocalNode().Address() && member.Address() != m2.LocalNode().Address() {
+			brokerHAMember = member
+		}
+	}
+
+	err = m1.SendReliable(brokerHAMember, append([]byte{2}, []byte("node1")...))
+	require.Nil(t, err)
+	err = m2.SendReliable(brokerHAMember, append([]byte{2}, []byte("node2")...))
+	require.Nil(t, err)
+
+	time.Sleep(1 * time.Second)
 
 	// Broker can deliver messages in different order than sent.
 	expectedMessageUnordered := []string{
-		string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7947"],"Payload":"dGVzdF9tZXNzYWdlX29uZQ==","Topic":"to_cluster/topic_one","Retain":true,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":"dGVzdF9tZXNzYWdlX3R3bw==","Topic":"to_cluster/topic_two","Retain":true,"Qos":0}]`)...)),
-		string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7947"],"Payload":"dGVzdF9tZXNzYWdlX3R3bw==","Topic":"to_cluster/topic_two","Retain":true,"Qos":0},{"Node":["127.0.0.1:7947"],"Payload":"dGVzdF9tZXNzYWdlX29uZQ==","Topic":"to_cluster/topic_one","Retain":true,"Qos":0}]`)...)),
-		string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7948"],"Payload":"dGVzdF9tZXNzYWdlX29uZQ==","Topic":"to_cluster/topic_one","Retain":true,"Qos":0},{"Node":["127.0.0.1:7948"],"Payload":"dGVzdF9tZXNzYWdlX3R3bw==","Topic":"to_cluster/topic_two","Retain":true,"Qos":0}]`)...)),
-		string(append([]byte{1}, []byte(`[{"Node":["127.0.0.1:7948"],"Payload":"dGVzdF9tZXNzYWdlX3R3bw==","Topic":"to_cluster/topic_two","Retain":true,"Qos":0},{"Node":["127.0.0.1:7948"],"Payload":"dGVzdF9tZXNzYWdlX29uZQ==","Topic":"to_cluster/topic_one","Retain":true,"Qos":0}]`)...)),
+		string(append([]byte{1}, []byte(`[{"Node":["node1"],"Payload":"dGVzdF9tZXNzYWdlX29uZQ==","Topic":"to_cluster/topic_one","Retain":true,"Qos":0},{"Node":["node1"],"Payload":"dGVzdF9tZXNzYWdlX3R3bw==","Topic":"to_cluster/topic_two","Retain":true,"Qos":0}]`)...)),
+		string(append([]byte{1}, []byte(`[{"Node":["node1"],"Payload":"dGVzdF9tZXNzYWdlX3R3bw==","Topic":"to_cluster/topic_two","Retain":true,"Qos":0},{"Node":["node1"],"Payload":"dGVzdF9tZXNzYWdlX29uZQ==","Topic":"to_cluster/topic_one","Retain":true,"Qos":0}]`)...)),
+		string(append([]byte{1}, []byte(`[{"Node":["node2"],"Payload":"dGVzdF9tZXNzYWdlX29uZQ==","Topic":"to_cluster/topic_one","Retain":true,"Qos":0},{"Node":["node2"],"Payload":"dGVzdF9tZXNzYWdlX3R3bw==","Topic":"to_cluster/topic_two","Retain":true,"Qos":0}]`)...)),
+		string(append([]byte{1}, []byte(`[{"Node":["node2"],"Payload":"dGVzdF9tZXNzYWdlX3R3bw==","Topic":"to_cluster/topic_two","Retain":true,"Qos":0},{"Node":["node2"],"Payload":"dGVzdF9tZXNzYWdlX29uZQ==","Topic":"to_cluster/topic_one","Retain":true,"Qos":0}]`)...)),
 	}
 	require.Contains(t, expectedMessageUnordered, string(md1.GetData()))
 	require.Contains(t, expectedMessageUnordered, string(md2.GetData()))
@@ -112,14 +125,6 @@ func TestBrokerHA(t *testing.T) {
 	expectedMessage := string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":"dGVzdF9tZXNzYWdlX3RocmVl","Topic":"to_cluster/topic_three","Retain":false,"Qos":1}]`)...))
 	require.Equal(t, expectedMessage, string(md1.GetData()))
 	require.Equal(t, expectedMessage, string(md2.GetData()))
-
-	var brokerHAMember *memberlist.Node
-
-	for _, member := range m1.Members() {
-		if member.Address() != m1.LocalNode().Address() && member.Address() != m2.LocalNode().Address() {
-			brokerHAMember = member
-		}
-	}
 
 	err = m2.SendReliable(brokerHAMember, append([]byte{1}, []byte(`[{"Payload": "dGVzdA==", "Topic": "from_cluster/topic_one", "Retain": false, "Qos": 0}]`)...))
 	if err != nil {
