@@ -98,9 +98,10 @@ func New(opts *Options) (*Discovery, context.CancelFunc, error) {
 		retainedHash: d.retainedHash,
 	}
 	d.config.Delegate = &delegate{
-		name:         d.config.Name,
-		bus:          d.bus,
-		retainedHash: d.retainedHash,
+		name:             d.config.Name,
+		bus:              d.bus,
+		retainedHash:     d.retainedHash,
+		pushPullInterval: d.config.PushPullInterval,
 	}
 
 	ml, err := memberlistCreate(d.config)

@@ -21,6 +21,11 @@ import (
 	"brokerha/internal/types"
 )
 
+var (
+	// Mocks for tests.
+	jsonMarshal = json.Marshal
+)
+
 // MQTTClient stores mqtt client details.
 type MQTTClient struct {
 	ID              string
@@ -55,7 +60,8 @@ func New(opts *Options) (*Broker, context.CancelFunc, error) {
 	}
 
 	mqttDefaultCapabilities := mqtt.DefaultServerCapabilities
-	mqttDefaultCapabilities.MaximumMessageExpiryInterval = 60 * 30
+	// We wants very long expiry time not to lose any retained messages.
+	mqttDefaultCapabilities.MaximumMessageExpiryInterval = 60 * 60 * 24 * 30 * 12
 
 	mqttServer := mqtt.New(&mqtt.Options{
 		Capabilities: mqttDefaultCapabilities,
@@ -218,14 +224,13 @@ func (b *Broker) calculateRetainedHash() {
 	})
 
 	for _, message := range retainedMessages {
-		data, err := json.Marshal(message)
+		data, err := jsonMarshal(message)
 		if err != nil {
 			log.Printf("unable to marshal message during retained hash calucation: %v", err)
 			return
 		}
 		retainedHash.Write(data)
 	}
-	//log.Printf("new retained hash %x", retainedHash.Sum(nil))
 	b.bus.Publish("discovery:retained_hash", fmt.Sprintf("%x", retainedHash.Sum(nil)))
 }
 

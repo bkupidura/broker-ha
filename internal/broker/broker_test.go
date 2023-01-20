@@ -2,6 +2,7 @@ package broker
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"log"
 	"strings"
@@ -733,7 +734,7 @@ func TestPublishToMQTT(t *testing.T) {
 	}
 }
 
-func TestHandleNewMember(t *testing.T) {
+func TestSendRetained(t *testing.T) {
 	tests := []struct {
 		inputNewMember  string
 		expectedMessage types.DiscoveryPublishMessage
@@ -774,4 +775,270 @@ func TestHandleNewMember(t *testing.T) {
 
 		time.Sleep(1 * time.Millisecond)
 	}
+}
+
+func TestCalculateRetainedHash(t *testing.T) {
+	tests := []struct {
+		inputRetainedMessages []packets.Packet
+		jsonMarshal           func(any) ([]byte, error)
+		expectedHash          string
+		expectedLog           []string
+	}{
+		{
+			inputRetainedMessages: []packets.Packet{
+				{
+					TopicName:       "test",
+					Payload:         []byte("test"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
+				},
+			},
+			jsonMarshal: func(any) ([]byte, error) {
+				return nil, errors.New("mock error")
+			},
+			expectedLog: []string{
+				"",
+				"auth for MQTT disabled",
+				"starting eventloop",
+				"unable to marshal message during retained hash calucation: mock error",
+				"stopping eventloop",
+			},
+		},
+		{
+			inputRetainedMessages: []packets.Packet{
+				{
+					TopicName:       "test",
+					Payload:         []byte("test"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
+				},
+			},
+			expectedHash: "7dc29aff36705746ee0093ac4c8f8c0c5013f6bdfb0b88cc59517b9a0efc3c39",
+			expectedLog: []string{
+				"",
+				"auth for MQTT disabled",
+				"starting eventloop",
+				"stopping eventloop",
+			},
+		},
+		{
+			inputRetainedMessages: []packets.Packet{
+				{
+					TopicName:       "test",
+					Payload:         []byte("test"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
+				},
+				{
+					TopicName:       "test2",
+					Payload:         []byte("test2"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
+				},
+				{
+					TopicName:       "test3",
+					Payload:         []byte("test3"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
+				},
+				{
+					TopicName:       "test4",
+					Payload:         []byte("test4"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
+				},
+			},
+			expectedHash: "c0c6d97937393ade2e25b65c49999590424ed407d5194a3fd532cad1675557d5",
+			expectedLog: []string{
+				"",
+				"auth for MQTT disabled",
+				"starting eventloop",
+				"stopping eventloop",
+			},
+		},
+		{
+			inputRetainedMessages: []packets.Packet{
+				{
+					TopicName:       "test4",
+					Payload:         []byte("test4"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
+				},
+				{
+					TopicName:       "test3",
+					Payload:         []byte("test3"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
+				},
+				{
+					TopicName:       "test2",
+					Payload:         []byte("test2"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
+				},
+				{
+					TopicName:       "test",
+					Payload:         []byte("test"),
+					Origin:          "inline",
+					ProtocolVersion: 4,
+					FixedHeader: packets.FixedHeader{
+						Qos:    0,
+						Retain: true,
+						Type:   3,
+					},
+				},
+			},
+			expectedHash: "c0c6d97937393ade2e25b65c49999590424ed407d5194a3fd532cad1675557d5",
+			expectedLog: []string{
+				"",
+				"auth for MQTT disabled",
+				"starting eventloop",
+				"stopping eventloop",
+			},
+		},
+	}
+	log.SetFlags(0)
+	var logOutput bytes.Buffer
+	log.SetOutput(&logOutput)
+
+	for _, test := range tests {
+		logOutput.Reset()
+
+		evBus := bus.New()
+		ch, err := evBus.Subscribe("discovery:retained_hash", "t", 1024)
+		require.Nil(t, err)
+
+		broker, ctxCancel, err := New(&Options{
+			MQTTPort:         1883,
+			Bus:              evBus,
+			SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
+		})
+		require.Nil(t, err)
+
+		for _, m := range test.inputRetainedMessages {
+			err := broker.server.Publish(m.TopicName, m.Payload, m.FixedHeader.Retain, m.FixedHeader.Qos)
+			require.Nil(t, err)
+		}
+
+		time.Sleep(10 * time.Millisecond)
+
+		if test.jsonMarshal != nil {
+			jsonMarshal = test.jsonMarshal
+		}
+
+		broker.calculateRetainedHash()
+
+		time.Sleep(10 * time.Millisecond)
+
+		broker.Shutdown()
+		ctxCancel()
+		jsonMarshal = json.Marshal
+
+		time.Sleep(10 * time.Millisecond)
+
+		if test.expectedHash != "" {
+			e := <-ch
+			retainedHash := e.Data.(string)
+
+			require.Equal(t, test.expectedHash, retainedHash)
+		}
+
+		if len(test.expectedLog) > 0 {
+			for _, line := range strings.Split(logOutput.String(), "\n") {
+				require.Contains(t, test.expectedLog, line)
+			}
+		}
+
+	}
+}
+
+func TestEventLoop(t *testing.T) {
+	evBus := bus.New()
+	chClusterMessageTo, err := evBus.Subscribe("cluster:message_to", "t", 1024)
+	require.Nil(t, err)
+	chDiscoveryRetainedHash, err := evBus.Subscribe("discovery:retained_hash", "t", 1024)
+	require.Nil(t, err)
+
+	broker, ctxCancel, err := New(&Options{
+		MQTTPort:         1883,
+		Bus:              evBus,
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
+	})
+	require.Nil(t, err)
+	defer broker.Shutdown()
+	defer ctxCancel()
+
+	err = evBus.Publish("cluster:message_from", types.MQTTPublishMessage{
+		Payload: []byte("test"),
+		Topic:   "TestEventLoop",
+		Retain:  true,
+		Qos:     1,
+	})
+	require.Nil(t, err)
+
+	err = evBus.Publish("broker:send_retained", "node1")
+	require.Nil(t, err)
+
+	time.Sleep(10 * time.Millisecond)
+	cEvent := <-chClusterMessageTo
+	message := cEvent.Data.(types.DiscoveryPublishMessage)
+	require.Equal(t, types.DiscoveryPublishMessage{
+		Payload: []byte("test"),
+		Topic:   "TestEventLoop",
+		Retain:  true,
+		Qos:     1,
+		Node:    []string{"node1"},
+	}, message)
+
+	time.Sleep(5 * time.Second)
+
+	rEvent := <-chDiscoveryRetainedHash
+	hash := rEvent.Data.(string)
+	require.Equal(t, "13823cb2169fc6337e7f27e70ed649ef95b52ef3e79d030c804f02f27d32a4bd", hash)
+
 }

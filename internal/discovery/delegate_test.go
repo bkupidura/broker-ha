@@ -22,42 +22,62 @@ func TestRetainedHashSet(t *testing.T) {
 		hashMap: map[string]retainedHashEntry{},
 	}
 
-	now := time.Now().Unix()
+	before := time.Now()
+	time.Sleep(1 * time.Millisecond)
 	r.Set("node-1", "node-1-hash")
-	require.Equal(t, "node-1-hash", r.hashMap["node-1"].Hash)
-	require.Equal(t, now, r.hashMap["node-1"].LastUpdated)
+	time.Sleep(1 * time.Millisecond)
+	after := time.Now()
+	node1 := r.hashMap["node-1"]
+
+	require.Equal(t, "node-1-hash", node1.Hash)
+	require.Less(t, before, node1.LastUpdated)
+	require.Greater(t, after, node1.LastUpdated)
 
 	r.Set("", "hash")
 	require.Equal(t, 1, len(r.hashMap))
 
 	r.Set("a", "")
 	require.Equal(t, 1, len(r.hashMap))
+
+	time.Sleep(1 * time.Second)
+	now := time.Now()
+
+	r.Set("node-1", "node-1-hash")
+	require.Equal(t, "node-1-hash", node1.Hash)
+	require.Equal(t, node1.LastUpdated, node1.LastUpdated)
+	require.Greater(t, now, node1.LastUpdated)
 }
 
 func TestRetainedHashGet(t *testing.T) {
+	before := time.Now()
+	time.Sleep(1 * time.Millisecond)
 	r := &retainedHash{
 		hashMap: map[string]retainedHashEntry{
 			"node-2": {
 				Hash:        "node-2-hash",
-				LastUpdated: 100,
+				LastUpdated: time.Now(),
 			},
 		},
 	}
+	time.Sleep(1 * time.Millisecond)
+	after := time.Now()
 
 	e := r.Get("node-2")
 	require.Equal(t, "node-2-hash", e.Hash)
-	require.Equal(t, int64(100), e.LastUpdated)
+	require.Less(t, before, e.LastUpdated)
+	require.Greater(t, after, e.LastUpdated)
 
 	e = r.Get("missing")
 	require.Equal(t, retainedHashEntry{}, e)
 }
 
 func TestRetainedHashDelete(t *testing.T) {
+
 	r := &retainedHash{
 		hashMap: map[string]retainedHashEntry{
 			"node-2": {
 				Hash:        "node-2-hash",
-				LastUpdated: 100,
+				LastUpdated: time.Now(),
 			},
 		},
 	}
@@ -65,7 +85,6 @@ func TestRetainedHashDelete(t *testing.T) {
 	r.Delete("node-1")
 	require.Equal(t, 1, len(r.hashMap))
 	require.Equal(t, "node-2-hash", r.hashMap["node-2"].Hash)
-	require.Equal(t, int64(100), r.hashMap["node-2"].LastUpdated)
 
 	r.Delete("node-2")
 	require.Equal(t, 0, len(r.hashMap))
@@ -82,7 +101,7 @@ func TestRetainedHashPopularHash(t *testing.T) {
 				hashMap: map[string]retainedHashEntry{
 					"node-2": {
 						Hash:        "hash1",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 				},
 			},
@@ -94,11 +113,11 @@ func TestRetainedHashPopularHash(t *testing.T) {
 				hashMap: map[string]retainedHashEntry{
 					"node-2": {
 						Hash:        "hash1",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 					"node-3": {
 						Hash:        "hash2",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 				},
 			},
@@ -110,15 +129,15 @@ func TestRetainedHashPopularHash(t *testing.T) {
 				hashMap: map[string]retainedHashEntry{
 					"node-2": {
 						Hash:        "hash1",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 					"node-3": {
 						Hash:        "hash2",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 					"node-4": {
 						Hash:        "hash3",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 				},
 			},
@@ -130,15 +149,15 @@ func TestRetainedHashPopularHash(t *testing.T) {
 				hashMap: map[string]retainedHashEntry{
 					"node-2": {
 						Hash:        "hash1",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 					"node-3": {
 						Hash:        "hash2",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 					"node-4": {
 						Hash:        "hash2",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 				},
 			},
@@ -150,19 +169,19 @@ func TestRetainedHashPopularHash(t *testing.T) {
 				hashMap: map[string]retainedHashEntry{
 					"node-2": {
 						Hash:        "hash1",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 					"node-3": {
 						Hash:        "hash1",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 					"node-4": {
 						Hash:        "hash2",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 					"node-5": {
 						Hash:        "hash2",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 				},
 			},
@@ -174,23 +193,23 @@ func TestRetainedHashPopularHash(t *testing.T) {
 				hashMap: map[string]retainedHashEntry{
 					"node-2": {
 						Hash:        "hash1",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 					"node-3": {
 						Hash:        "hash1",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 					"node-4": {
 						Hash:        "hash2",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 					"node-5": {
 						Hash:        "hash2",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 					"node-6": {
 						Hash:        "hash2",
-						LastUpdated: 100,
+						LastUpdated: time.Now(),
 					},
 				},
 			},
@@ -356,7 +375,7 @@ func TestDelegateLocalState(t *testing.T) {
 			hashMap: map[string]retainedHashEntry{
 				"node-1": {
 					Hash:        "hash1",
-					LastUpdated: 100,
+					LastUpdated: time.Now(),
 				},
 			},
 		},
@@ -379,18 +398,22 @@ func TestDelegateLocalState(t *testing.T) {
 
 func TestDelegateMergeRemoteState(t *testing.T) {
 	evBus := bus.New()
+	duration, err := time.ParseDuration("15s")
+	require.Nil(t, err)
+	pastTime := time.Now().Add(-3 * duration)
 	d := &delegate{
-		name: "TestDelegateMergeRemoteState",
-		bus:  evBus,
+		name:             "TestDelegateMergeRemoteState",
+		bus:              evBus,
+		pushPullInterval: duration,
 		retainedHash: &retainedHash{
 			hashMap: map[string]retainedHashEntry{
 				"TestDelegateMergeRemoteState": {
 					Hash:        "hash1",
-					LastUpdated: 100,
+					LastUpdated: pastTime,
 				},
 				"node-2": {
 					Hash:        "hash-2",
-					LastUpdated: 100,
+					LastUpdated: time.Now(),
 				},
 			},
 		},
@@ -473,11 +496,11 @@ func TestDelegateEventNotifyLeave(t *testing.T) {
 			hashMap: map[string]retainedHashEntry{
 				"TestDelegateEventNotifyLeave": {
 					Hash:        "hash",
-					LastUpdated: 100,
+					LastUpdated: time.Now(),
 				},
 				"node-2": {
 					Hash:        "hash",
-					LastUpdated: 100,
+					LastUpdated: time.Now(),
 				},
 			},
 		},

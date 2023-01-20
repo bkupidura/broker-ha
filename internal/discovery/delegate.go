@@ -15,7 +15,7 @@ import (
 
 type retainedHashEntry struct {
 	Hash        string
-	LastUpdated int64
+	LastUpdated time.Time
 }
 
 type retainedHash struct {
@@ -36,7 +36,7 @@ func (r *retainedHash) Set(node, hash string) {
 
 	r.hashMap[node] = retainedHashEntry{
 		Hash:        hash,
-		LastUpdated: time.Now().Unix(),
+		LastUpdated: time.Now(),
 	}
 }
 
@@ -77,9 +77,10 @@ func (r *retainedHash) PopularHash() (string, []string) {
 
 // delegate implements memberlist.Delegate.
 type delegate struct {
-	bus          *bus.Bus
-	name         string
-	retainedHash *retainedHash
+	bus              *bus.Bus
+	name             string
+	retainedHash     *retainedHash
+	pushPullInterval time.Duration
 }
 
 func (d *delegate) NodeMeta(limit int) []byte {
@@ -149,7 +150,7 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 
 	//	log.Printf("localHash: %+v popularHash: %+v", localHashEntry.Hash, popularHash)
 
-	if time.Now().Unix()-localHashEntry.LastUpdated < 30 {
+	if time.Since(localHashEntry.LastUpdated) < d.pushPullInterval*2 {
 		return
 	}
 
