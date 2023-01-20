@@ -246,7 +246,6 @@ List of channels:
 - `discovery:request_retained` - event is generated when node needs to synchronize retained messsages from other cluster member.
 - `discovery:retained_hash` - event is generated when new retained messages hash is calculated by broker.
 - `broker:send_retained` - event is generated to start sending retained messages to other cluster member.
-- `broker:pk_retained` - event is generated when broker retain message.
 
 ## HTTP
 

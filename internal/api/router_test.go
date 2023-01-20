@@ -304,7 +304,7 @@ func TestNewRouter(t *testing.T) {
 	b, brokerCtxCancel, err := broker.New(&broker.Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	defer brokerCtxCancel()
 	defer b.Shutdown()

@@ -30,6 +30,10 @@ func (r *retainedHash) Set(node, hash string) {
 		return
 	}
 
+	if r.hashMap[node].Hash == hash {
+		return
+	}
+
 	r.hashMap[node] = retainedHashEntry{
 		Hash:        hash,
 		LastUpdated: time.Now().Unix(),
@@ -145,7 +149,7 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 
 	//	log.Printf("localHash: %+v popularHash: %+v", localHashEntry.Hash, popularHash)
 
-	if time.Now().Unix()-localHashEntry.LastUpdated < 5 {
+	if time.Now().Unix()-localHashEntry.LastUpdated < 30 {
 		return
 	}
 

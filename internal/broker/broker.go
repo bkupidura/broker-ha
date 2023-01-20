@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"time"
 
 	"github.com/mochi-co/mqtt/v2"
 	"github.com/mochi-co/mqtt/v2/hooks/auth"
@@ -38,7 +39,7 @@ type Broker struct {
 
 // New creates and starts Broker instance.
 func New(opts *Options) (*Broker, context.CancelFunc, error) {
-	for _, requiredSubscriptionSizeName := range []string{"cluster:message_from", "broker:send_retained", "broker:pk_retained"} {
+	for _, requiredSubscriptionSizeName := range []string{"cluster:message_from", "broker:send_retained"} {
 		if _, ok := opts.SubscriptionSize[requiredSubscriptionSizeName]; !ok {
 			return nil, nil, fmt.Errorf("subscription size for %s not provided", requiredSubscriptionSizeName)
 		}
@@ -49,11 +50,6 @@ func New(opts *Options) (*Broker, context.CancelFunc, error) {
 	}
 
 	chBrokerSendRetained, err := opts.Bus.Subscribe("broker:send_retained", "broker", opts.SubscriptionSize["broker:send_retained"])
-	if err != nil {
-		return nil, nil, err
-	}
-
-	chBrokerPKRetained, err := opts.Bus.Subscribe("broker:pk_retained", "broker", opts.SubscriptionSize["broker:pk_retained"])
 	if err != nil {
 		return nil, nil, err
 	}
@@ -106,7 +102,7 @@ func New(opts *Options) (*Broker, context.CancelFunc, error) {
 	// ctx is used only by tests.
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
-	go broker.eventLoop(ctx, chClusterMessageFrom, chBrokerSendRetained, chBrokerPKRetained)
+	go broker.eventLoop(ctx, chClusterMessageFrom, chBrokerSendRetained)
 
 	return broker, ctxCancel, nil
 }
@@ -233,8 +229,10 @@ func (b *Broker) calculateRetainedHash() {
 	b.bus.Publish("discovery:retained_hash", fmt.Sprintf("%x", retainedHash.Sum(nil)))
 }
 
-func (b *Broker) eventLoop(ctx context.Context, chFromCluster chan bus.Event, chBrokerSendRetained chan bus.Event, chBrokerPKRetained chan bus.Event) {
+func (b *Broker) eventLoop(ctx context.Context, chFromCluster chan bus.Event, chBrokerSendRetained chan bus.Event) {
 	log.Printf("starting eventloop")
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
 	for {
 		select {
 		case event := <-chFromCluster:
@@ -243,7 +241,7 @@ func (b *Broker) eventLoop(ctx context.Context, chFromCluster chan bus.Event, ch
 		case event := <-chBrokerSendRetained:
 			member := event.Data.(string)
 			b.sendRetained(member)
-		case <-chBrokerPKRetained:
+		case <-ticker.C:
 			b.calculateRetainedHash()
 		case <-ctx.Done():
 			log.Printf("stopping eventloop")

@@ -62,7 +62,7 @@ func getConfig() (*viper.Viper, error) {
 
 	config.SetDefault("cluster.expected_members", 3)
 	config.SetDefault("cluster.config.probe_interval", 500)
-	config.SetDefault("cluster.config.push_pull_interval", 30000)
+	config.SetDefault("cluster.config.push_pull_interval", 15000)
 
 	config.SetDefault("discovery.subscription_size", map[string]interface{}{"cluster:message_to": 1024, "discovery:request_retained": 10, "discovery:retained_hash": 10})
 

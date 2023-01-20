@@ -29,7 +29,7 @@ func TestAuth(t *testing.T) {
 				MQTTPort:         1883,
 				Bus:              bus.New(),
 				Auth:             auth.AuthRules{{Username: "test", Password: "test", Allow: true}},
-				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 			},
 			inputMQTTClientOps: paho.NewClientOptions().
 				AddBroker("127.0.0.1:1883").
@@ -44,7 +44,7 @@ func TestAuth(t *testing.T) {
 				MQTTPort:         1883,
 				Bus:              bus.New(),
 				Auth:             auth.AuthRules{{Username: "test", Password: "test", Allow: true}},
-				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 			},
 			inputMQTTClientOps: paho.NewClientOptions().
 				AddBroker("127.0.0.1:1883").
@@ -59,7 +59,7 @@ func TestAuth(t *testing.T) {
 				MQTTPort:         1883,
 				Bus:              bus.New(),
 				Auth:             auth.AuthRules{{Username: "test", Password: "test", Allow: true}},
-				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 			},
 			inputMQTTClientOps: paho.NewClientOptions().
 				AddBroker("127.0.0.1:1883").
@@ -73,7 +73,7 @@ func TestAuth(t *testing.T) {
 			inputOptions: &Options{
 				MQTTPort:         1883,
 				Bus:              bus.New(),
-				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 			},
 			inputMQTTClientOps: paho.NewClientOptions().
 				AddBroker("127.0.0.1:1883").
@@ -86,7 +86,7 @@ func TestAuth(t *testing.T) {
 			inputOptions: &Options{
 				MQTTPort:         1883,
 				Bus:              bus.New(),
-				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 			},
 			inputMQTTClientOps: paho.NewClientOptions().
 				AddBroker("127.0.0.1:1883").
@@ -147,13 +147,6 @@ func TestNew(t *testing.T) {
 				MQTTPort:         1883,
 				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 			},
-			expectedErr: "subscription size for broker:pk_retained not provided",
-		},
-		{
-			inputOptions: &Options{
-				MQTTPort:         1883,
-				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
-			},
 			inputBeforeTest: func(b *bus.Bus) {
 				_, err := b.Subscribe("cluster:message_from", "broker", 1024)
 				require.Nil(t, err)
@@ -163,7 +156,7 @@ func TestNew(t *testing.T) {
 		{
 			inputOptions: &Options{
 				MQTTPort:         1883,
-				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 			},
 			inputBeforeTest: func(b *bus.Bus) {
 				_, err := b.Subscribe("broker:send_retained", "broker", 1024)
@@ -173,26 +166,15 @@ func TestNew(t *testing.T) {
 		},
 		{
 			inputOptions: &Options{
-				MQTTPort:         1883,
-				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
-			},
-			inputBeforeTest: func(b *bus.Bus) {
-				_, err := b.Subscribe("broker:pk_retained", "broker", 1024)
-				require.Nil(t, err)
-			},
-			expectedErr: "subscriber broker already exists",
-		},
-		{
-			inputOptions: &Options{
 				MQTTPort:         -1,
-				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 			},
 			expectedErr: "listen tcp: address -1: invalid port",
 		},
 		{
 			inputOptions: &Options{
 				MQTTPort:         1883,
-				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 			},
 			expectedLog: []string{
 				"",
@@ -205,7 +187,7 @@ func TestNew(t *testing.T) {
 			inputOptions: &Options{
 				MQTTPort:         1883,
 				Auth:             auth.AuthRules{{Username: "test", Password: "test", Allow: true}},
-				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+				SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 			},
 			expectedLog: []string{
 				"",
@@ -253,7 +235,7 @@ func TestShutdown(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              bus.New(),
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	require.Nil(t, err)
 	defer ctxCancel()
@@ -266,7 +248,7 @@ func TestSystemInfo(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              bus.New(),
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	require.Nil(t, err)
 	defer broker.Shutdown()
@@ -344,7 +326,7 @@ func TestMessages(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              bus.New(),
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	require.Nil(t, err)
 	defer broker.Shutdown()
@@ -370,7 +352,7 @@ func TestClients(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              bus.New(),
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	require.Nil(t, err)
 	defer broker.Shutdown()
@@ -423,7 +405,7 @@ func TestClient(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              bus.New(),
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	require.Nil(t, err)
 	defer broker.Shutdown()
@@ -481,7 +463,7 @@ func TestStopClient(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              bus.New(),
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	require.Nil(t, err)
 	defer broker.Shutdown()
@@ -541,7 +523,7 @@ func TestInflights(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	require.Nil(t, err)
 	defer broker.Shutdown()
@@ -619,7 +601,7 @@ func TestSubscribers(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	require.Nil(t, err)
 	defer broker.Shutdown()
@@ -696,7 +678,7 @@ func TestPublishToMQTT(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 
 	require.Nil(t, err)
@@ -775,7 +757,7 @@ func TestHandleNewMember(t *testing.T) {
 	broker, ctxCancel, err := New(&Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	require.Nil(t, err)
 	defer broker.Shutdown()

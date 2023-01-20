@@ -235,7 +235,7 @@ func TestSseHandler(t *testing.T) {
 				"filters": []string{"unknown"},
 			},
 			expectedCode:  http.StatusBadRequest,
-			expectedError: "filter not in allowed list [cluster:message_from cluster:message_to broker:send_retained broker:pk_retained discovery:request_retained discovery:retained_hash]",
+			expectedError: "filter not in allowed list [cluster:message_from cluster:message_to broker:send_retained discovery:request_retained discovery:retained_hash]",
 			expectedBody:  []string{""},
 		},
 		{
@@ -320,30 +320,6 @@ func TestSseHandler(t *testing.T) {
 				time.Sleep(20 * time.Millisecond)
 				b.Publish("cluster:message_from", "message_from")
 				b.Publish("cluster:message_to", "message_to")
-				err := b.Publish("broker:pk_retained", true)
-				require.Nil(t, err)
-			},
-			inputResponseRecorder: NewResponseWriter(true),
-			inputRequest: map[string]interface{}{
-				"filters": []string{"broker:pk_retained"},
-			},
-			expectedCode: http.StatusOK,
-			expectedBody: []string{
-				"",
-				"event: broker:pk_retained",
-				"data: true",
-			},
-		},
-		{
-			inputBusFunc: func() *bus.Bus {
-				b := bus.New()
-				return b
-			},
-			inputCancelTimeout: 100,
-			inputPublishFunc: func(b *bus.Bus) {
-				time.Sleep(20 * time.Millisecond)
-				b.Publish("cluster:message_from", "message_from")
-				b.Publish("cluster:message_to", "message_to")
 				err := b.Publish("discovery:request_retained", "node1")
 				require.Nil(t, err)
 			},
@@ -396,8 +372,6 @@ func TestSseHandler(t *testing.T) {
 				require.Nil(t, err)
 				err = b.Publish("broker:send_retained", "node1")
 				require.Nil(t, err)
-				err = b.Publish("broker:pk_retained", true)
-				require.Nil(t, err)
 				err = b.Publish("discovery:request_retained", "node2")
 				require.Nil(t, err)
 				err = b.Publish("discovery:retained_hash", "hash")
@@ -416,8 +390,6 @@ func TestSseHandler(t *testing.T) {
 				"data: \"message_to\"",
 				"event: broker:send_retained",
 				"data: \"node1\"",
-				"event: broker:pk_retained",
-				"data: true",
 				"event: discovery:request_retained",
 				"data: \"node2\"",
 				"event: discovery:retained_hash",
@@ -438,8 +410,6 @@ func TestSseHandler(t *testing.T) {
 				require.Nil(t, err)
 				err = b.Publish("broker:send_retained", "node1")
 				require.Nil(t, err)
-				err = b.Publish("broker:pk_retained", true)
-				require.Nil(t, err)
 				err = b.Publish("discovery:request_retained", "node2")
 				require.Nil(t, err)
 				err = b.Publish("discovery:retained_hash", "hash")
@@ -456,8 +426,6 @@ func TestSseHandler(t *testing.T) {
 				"data: \"message_to\"",
 				"event: broker:send_retained",
 				"data: \"node1\"",
-				"event: broker:pk_retained",
-				"data: true",
 				"event: discovery:request_retained",
 				"data: \"node2\"",
 				"event: discovery:retained_hash",
@@ -622,7 +590,7 @@ func TestMqttClientsHandler(t *testing.T) {
 	b, ctxCancel, err := broker.New(&broker.Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	require.Nil(t, err)
 	defer b.Shutdown()
@@ -694,7 +662,7 @@ func TestMqttClientStopHandler(t *testing.T) {
 	b, ctxCancel, err := broker.New(&broker.Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	require.Nil(t, err)
 	defer b.Shutdown()
@@ -789,7 +757,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 	b, ctxCancel, err := broker.New(&broker.Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	require.Nil(t, err)
 	defer b.Shutdown()
@@ -901,7 +869,7 @@ func TestMqttTopicMessagesHandler(t *testing.T) {
 	b, ctxCancel, err := broker.New(&broker.Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	require.Nil(t, err)
 	defer b.Shutdown()
@@ -1000,7 +968,7 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 	b, ctxCancel, err := broker.New(&broker.Options{
 		MQTTPort:         1883,
 		Bus:              evBus,
-		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10, "broker:pk_retained": 100},
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "broker:send_retained": 10},
 	})
 	require.Nil(t, err)
 	defer b.Shutdown()

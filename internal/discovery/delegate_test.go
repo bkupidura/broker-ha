@@ -412,7 +412,7 @@ func TestDelegateMergeRemoteState(t *testing.T) {
 	receivedMessage := e.Data.(string)
 	require.Equal(t, "node-1", receivedMessage)
 
-	d.retainedHash.Set("TestDelegateMergeRemoteState", "hash1")
+	d.retainedHash.Set("TestDelegateMergeRemoteState", "hash1-1")
 	d.MergeRemoteState([]byte(`["node-1", "hash-2"]`), true)
 	require.Equal(t, "hash-2", d.retainedHash.Get("node-1").Hash)
 

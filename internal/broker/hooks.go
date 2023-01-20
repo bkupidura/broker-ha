@@ -20,7 +20,6 @@ type Hook struct {
 func (h *Hook) Provides(b byte) bool {
 	return bytes.Contains([]byte{
 		mqtt.OnPublish,
-		mqtt.OnRetainMessage,
 	}, []byte{b})
 }
 
@@ -45,10 +44,6 @@ func (h *Hook) OnPublish(cl *mqtt.Client, pk packets.Packet) (packets.Packet, er
 		h.bus.Publish("cluster:message_to", message)
 	}
 	return pk, nil
-}
-
-func (h *Hook) OnRetainMessage(cl *mqtt.Client, pk packets.Packet, r int64) {
-	h.bus.Publish("broker:pk_retained", true)
 }
 
 // ID hook.

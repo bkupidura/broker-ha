@@ -24,7 +24,6 @@ func TestProvides(t *testing.T) {
 	h := &Hook{}
 
 	require.Equal(t, true, h.Provides(mqtt.OnPublish))
-	require.Equal(t, true, h.Provides(mqtt.OnRetainMessage))
 }
 
 func TestOnPublish(t *testing.T) {
@@ -111,33 +110,4 @@ func TestOnPublish(t *testing.T) {
 			require.Equal(t, test.expectedMessage, e.Data.(types.DiscoveryPublishMessage))
 		}
 	}
-}
-
-func TestOnRetainMessage(t *testing.T) {
-	s := mqtt.New(&mqtt.Options{})
-	defer s.Close()
-
-	evBus := bus.New()
-	ch, err := evBus.Subscribe("broker:pk_retained", "t", 1024)
-	require.Nil(t, err)
-
-	h := &Hook{
-		bus: evBus,
-	}
-
-	cl := s.NewClient(nil, "local", "inline", false)
-	pk := packets.Packet{
-		FixedHeader: packets.FixedHeader{
-			Type:   packets.Publish,
-			Qos:    1,
-			Retain: false,
-		},
-		TopicName: "test2",
-		Payload:   []byte("test2"),
-	}
-
-	h.OnRetainMessage(cl, pk, 1)
-	e := <-ch
-	data := e.Data.(bool)
-	require.True(t, data)
 }

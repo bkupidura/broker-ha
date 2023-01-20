@@ -22,7 +22,7 @@ var (
 	// How often to send keepalives in seconds over SSE.
 	sseKeepalive = 60
 	// List of allowed SSE channels.
-	sseChannels = []string{"cluster:message_from", "cluster:message_to", "broker:send_retained", "broker:pk_retained", "discovery:request_retained", "discovery:retained_hash"}
+	sseChannels = []string{"cluster:message_from", "cluster:message_to", "broker:send_retained", "discovery:request_retained", "discovery:retained_hash"}
 	// API listening port.
 	HTTPPort = 8080
 )
