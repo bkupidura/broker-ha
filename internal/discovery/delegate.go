@@ -13,6 +13,11 @@ import (
 	"brokerha/internal/types"
 )
 
+var (
+	// mocks for tests
+	timeNow = time.Now
+)
+
 // retainedHashEntry stores retained messages hash and when it was changed.
 type retainedHashEntry struct {
 	Hash        string
@@ -39,7 +44,7 @@ func (r *retainedHash) Set(node, hash string) {
 
 	r.hashMap[node] = retainedHashEntry{
 		Hash:        hash,
-		LastUpdated: time.Now(),
+		LastUpdated: timeNow(),
 	}
 }
 
@@ -150,12 +155,16 @@ func (d *delegate) LocalState(join bool) []byte {
 // lets sync retained messages from other nodes.
 func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 	state := [2]string{}
-	err := jsonUnmarshal(buf, &state)
+	err := json.Unmarshal(buf, &state)
 	if err != nil {
 		return
 	}
 
 	d.retainedHash.Set(state[0], state[1])
+
+	if join {
+		return
+	}
 
 	localHashEntry := d.retainedHash.Get(d.name)
 
@@ -171,7 +180,7 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 
 	if localHashEntry.Hash != popularHash {
 		log.Printf("syncing retained messages from %v", nodes)
-		d.lastSync = time.Now()
+		d.lastSync = timeNow()
 		for _, node := range nodes {
 			d.bus.Publish("discovery:request_retained", node)
 		}

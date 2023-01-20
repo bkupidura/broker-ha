@@ -34,7 +34,6 @@ var (
 	netLookupIP       = net.LookupIP
 	netInterfaceAddrs = net.InterfaceAddrs
 	jsonMarshal       = json.Marshal
-	jsonUnmarshal     = json.Unmarshal
 	memberlistCreate  = memberlist.Create
 )
 

@@ -72,7 +72,6 @@ func TestRetainedHashGet(t *testing.T) {
 }
 
 func TestRetainedHashDelete(t *testing.T) {
-
 	r := &retainedHash{
 		hashMap: map[string]retainedHashEntry{
 			"node-2": {
@@ -397,66 +396,204 @@ func TestDelegateLocalState(t *testing.T) {
 }
 
 func TestDelegateMergeRemoteState(t *testing.T) {
+	timeNow = func() time.Time {
+		return time.Date(2023, time.January, 20, 1, 2, 3, 4, time.UTC)
+	}
+	defer func() {
+		timeNow = time.Now
+	}()
+	duration, err := time.ParseDuration("1s")
+	pastTime := time.Now().Add(-10 * duration)
+	futureTime := time.Now().Add(10 * duration)
+
 	evBus := bus.New()
-	duration, err := time.ParseDuration("3s")
-	require.Nil(t, err)
-	pastTime := time.Now().Add(-3 * duration)
-	d := &delegate{
-		name:             "TestDelegateMergeRemoteState",
-		bus:              evBus,
-		pushPullInterval: duration,
-		retainedHash: &retainedHash{
-			hashMap: map[string]retainedHashEntry{
-				"TestDelegateMergeRemoteState": {
-					Hash:        "hash1",
-					LastUpdated: pastTime,
+	tests := []struct {
+		inputDelegate      *delegate
+		inputBuf           []byte
+		inputJoin          bool
+		expectedMessage    []string
+		expectedRetainHash *retainedHash
+		expectedLastSync   time.Time
+	}{
+		{
+			inputDelegate: &delegate{
+				bus:  evBus,
+				name: "TestDelegateMergeRemoteState",
+				retainedHash: &retainedHash{
+					hashMap: map[string]retainedHashEntry{},
 				},
-				"node-2": {
-					Hash:        "hash-2",
-					LastUpdated: time.Now(),
+				pushPullInterval: duration,
+			},
+			inputBuf: []byte(`["a""b", "c"]`),
+			expectedRetainHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{},
+			},
+		},
+		{
+			inputDelegate: &delegate{
+				bus:  evBus,
+				name: "testDelegateMergeRemoteState",
+				retainedHash: &retainedHash{
+					hashMap: map[string]retainedHashEntry{
+						"node-2": {
+							Hash:        "hash1",
+							LastUpdated: pastTime,
+						},
+					},
+				},
+				pushPullInterval: duration,
+			},
+			inputBuf:  []byte(`["node-1", "hash1"]`),
+			inputJoin: true,
+			expectedRetainHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{
+					"node-1": {
+						Hash:        "hash1",
+						LastUpdated: timeNow(),
+					},
+					"node-2": {
+						Hash:        "hash1",
+						LastUpdated: pastTime,
+					},
 				},
 			},
 		},
+		{
+			inputDelegate: &delegate{
+				bus:  evBus,
+				name: "testDelegateMergeRemoteState",
+				retainedHash: &retainedHash{
+					hashMap: map[string]retainedHashEntry{},
+				},
+				pushPullInterval: duration,
+				lastSync:         futureTime,
+			},
+			inputBuf: []byte(`["node-1", "hash1"]`),
+			expectedRetainHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{
+					"node-1": {
+						Hash:        "hash1",
+						LastUpdated: timeNow(),
+					},
+				},
+			},
+			expectedLastSync: futureTime,
+		},
+		{
+			inputDelegate: &delegate{
+				bus:  evBus,
+				name: "testDelegateMergeRemoteState",
+				retainedHash: &retainedHash{
+					hashMap: map[string]retainedHashEntry{
+						"testDelegateMergeRemoteState": {
+							Hash:        "hash",
+							LastUpdated: futureTime,
+						},
+					},
+				},
+				pushPullInterval: duration,
+			},
+			inputBuf: []byte(`["node-1", "hash1"]`),
+			expectedRetainHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{
+					"testDelegateMergeRemoteState": {
+						Hash:        "hash",
+						LastUpdated: futureTime,
+					},
+					"node-1": {
+						Hash:        "hash1",
+						LastUpdated: timeNow(),
+					},
+				},
+			},
+		},
+		{
+			inputDelegate: &delegate{
+				bus:  evBus,
+				name: "testDelegateMergeRemoteState",
+				retainedHash: &retainedHash{
+					hashMap: map[string]retainedHashEntry{
+						"testDelegateMergeRemoteState": {
+							Hash:        "hash",
+							LastUpdated: pastTime,
+						},
+					},
+				},
+				pushPullInterval: duration,
+			},
+			inputBuf: []byte(`["node-1", "hash1"]`),
+			expectedRetainHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{
+					"testDelegateMergeRemoteState": {
+						Hash:        "hash",
+						LastUpdated: pastTime,
+					},
+					"node-1": {
+						Hash:        "hash1",
+						LastUpdated: timeNow(),
+					},
+				},
+			},
+			expectedMessage:  []string{"node-1"},
+			expectedLastSync: timeNow(),
+		},
+		{
+			inputDelegate: &delegate{
+				bus:  evBus,
+				name: "testDelegateMergeRemoteState",
+				retainedHash: &retainedHash{
+					hashMap: map[string]retainedHashEntry{
+						"testDelegateMergeRemoteState": {
+							Hash:        "hash",
+							LastUpdated: pastTime,
+						},
+						"node-2": {
+							Hash:        "hash1",
+							LastUpdated: pastTime,
+						},
+					},
+				},
+				pushPullInterval: duration,
+			},
+			inputBuf: []byte(`["node-1", "hash1"]`),
+			expectedRetainHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{
+					"testDelegateMergeRemoteState": {
+						Hash:        "hash",
+						LastUpdated: pastTime,
+					},
+					"node-2": {
+						Hash:        "hash1",
+						LastUpdated: pastTime,
+					},
+					"node-1": {
+						Hash:        "hash1",
+						LastUpdated: timeNow(),
+					},
+				},
+			},
+			expectedMessage:  []string{"node-1", "node-2"},
+			expectedLastSync: timeNow(),
+		},
 	}
 
-	ch, err := evBus.Subscribe("discovery:request_retained", "TestDelegateMergeRemoteState", 10)
+	ch, err := evBus.Subscribe("discovery:request_retained", "t", 1024)
 	require.Nil(t, err)
 
-	jsonUnmarshal = func([]byte, any) error {
-		return fmt.Errorf("mock error")
+	for _, test := range tests {
+		d := test.inputDelegate
+		d.MergeRemoteState(test.inputBuf, test.inputJoin)
+
+		require.Equal(t, test.expectedRetainHash, d.retainedHash)
+		require.Equal(t, test.expectedLastSync, d.lastSync)
+
+		for _, expectedMessage := range test.expectedMessage {
+			e := <-ch
+			data := e.Data.(string)
+			require.Equal(t, expectedMessage, data)
+		}
+
 	}
-	d.MergeRemoteState([]byte(`["node-1", "hash-2"]`), true)
-	require.Equal(t, "", d.retainedHash.Get("node-1").Hash)
-
-	jsonUnmarshal = json.Unmarshal
-	d.MergeRemoteState([]byte(`["node-1", "hash-2"]`), true)
-	require.Equal(t, "hash-2", d.retainedHash.Get("node-1").Hash)
-	for _, node := range []string{"node-1", "node-2"} {
-		e := <-ch
-		receivedMessage := e.Data.(string)
-		require.Equal(t, node, receivedMessage)
-	}
-
-	d.MergeRemoteState([]byte(`["node-3", "hash-2"]`), true)
-	require.Equal(t, "hash-2", d.retainedHash.Get("node-3").Hash)
-	select {
-	case <-ch:
-		require.FailNow(t, "received unexpected message")
-	case <-time.After(10 * time.Millisecond):
-	}
-
-	time.Sleep(3 * time.Second)
-
-	d.retainedHash.Set("TestDelegateMergeRemoteState", "hash1-1")
-	d.MergeRemoteState([]byte(`["node-1", "hash-2"]`), true)
-	require.Equal(t, "hash-2", d.retainedHash.Get("node-1").Hash)
-
-	select {
-	case <-ch:
-		require.FailNow(t, "received unexpected message")
-	case <-time.After(10 * time.Millisecond):
-	}
-
 }
 
 func TestDelegateEventNotifyJoin(t *testing.T) {
