@@ -398,7 +398,7 @@ func TestDelegateLocalState(t *testing.T) {
 
 func TestDelegateMergeRemoteState(t *testing.T) {
 	evBus := bus.New()
-	duration, err := time.ParseDuration("15s")
+	duration, err := time.ParseDuration("3s")
 	require.Nil(t, err)
 	pastTime := time.Now().Add(-3 * duration)
 	d := &delegate{
@@ -431,9 +431,21 @@ func TestDelegateMergeRemoteState(t *testing.T) {
 	jsonUnmarshal = json.Unmarshal
 	d.MergeRemoteState([]byte(`["node-1", "hash-2"]`), true)
 	require.Equal(t, "hash-2", d.retainedHash.Get("node-1").Hash)
-	e := <-ch
-	receivedMessage := e.Data.(string)
-	require.Equal(t, "node-1", receivedMessage)
+	for _, node := range []string{"node-1", "node-2"} {
+		e := <-ch
+		receivedMessage := e.Data.(string)
+		require.Equal(t, node, receivedMessage)
+	}
+
+	d.MergeRemoteState([]byte(`["node-3", "hash-2"]`), true)
+	require.Equal(t, "hash-2", d.retainedHash.Get("node-3").Hash)
+	select {
+	case <-ch:
+		require.FailNow(t, "received unexpected message")
+	case <-time.After(10 * time.Millisecond):
+	}
+
+	time.Sleep(3 * time.Second)
 
 	d.retainedHash.Set("TestDelegateMergeRemoteState", "hash1-1")
 	d.MergeRemoteState([]byte(`["node-1", "hash-2"]`), true)

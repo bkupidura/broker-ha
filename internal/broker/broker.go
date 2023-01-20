@@ -207,6 +207,7 @@ func (b *Broker) sendRetained(member string) {
 	}
 }
 
+// calculateRetainedHash will take all retained messages and compute hash.
 func (b *Broker) calculateRetainedHash() {
 	retainedHash := sha256.New()
 	retainedMessages := []types.DiscoveryPublishMessage{}
@@ -234,6 +235,7 @@ func (b *Broker) calculateRetainedHash() {
 	b.bus.Publish("discovery:retained_hash", fmt.Sprintf("%x", retainedHash.Sum(nil)))
 }
 
+// eventLoop perform maintenance tasks.
 func (b *Broker) eventLoop(ctx context.Context, chFromCluster chan bus.Event, chBrokerSendRetained chan bus.Event) {
 	log.Printf("starting eventloop")
 	ticker := time.NewTicker(5 * time.Second)

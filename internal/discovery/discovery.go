@@ -267,6 +267,7 @@ func populatePublishBatch(publishBatch map[string][]types.DiscoveryPublishMessag
 	}
 }
 
+// eventLoop perform maintenance tasks.
 func (d *Discovery) eventLoop(ctx context.Context, chClusterMessageTo chan bus.Event, chDiscoveryRequestRetained chan bus.Event, chDiscoveryRetainedHash chan bus.Event) {
 	log.Printf("starting eventloop")
 	for {

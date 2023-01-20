@@ -13,16 +13,19 @@ import (
 	"brokerha/internal/types"
 )
 
+// retainedHashEntry stores retained messages hash and when it was changed.
 type retainedHashEntry struct {
 	Hash        string
 	LastUpdated time.Time
 }
 
+// retainedHash stores cluster nodes and their retainedHashEntry.
 type retainedHash struct {
 	mu      sync.Mutex
 	hashMap map[string]retainedHashEntry
 }
 
+// Set adds or updates node in hashMap.
 func (r *retainedHash) Set(node, hash string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -40,10 +43,12 @@ func (r *retainedHash) Set(node, hash string) {
 	}
 }
 
+// Get fetchs node from hashMap.
 func (r *retainedHash) Get(node string) retainedHashEntry {
 	return r.hashMap[node]
 }
 
+// Delete removes node from hashMap.
 func (r *retainedHash) Delete(node string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -51,6 +56,8 @@ func (r *retainedHash) Delete(node string) {
 	delete(r.hashMap, node)
 }
 
+// PopularHash will find most popular hash in the cluster.
+// Majority of nodes cant be wrong...
 func (r *retainedHash) PopularHash() (string, []string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -81,6 +88,7 @@ type delegate struct {
 	name             string
 	retainedHash     *retainedHash
 	pushPullInterval time.Duration
+	lastSync         time.Time
 }
 
 func (d *delegate) NodeMeta(limit int) []byte {
@@ -123,6 +131,8 @@ func (d *delegate) GetBroadcasts(overhead, limit int) [][]byte {
 	return [][]byte{}
 }
 
+// LocalState is send to other cluster members.
+// It will return node name and current retained messages hash.
 func (d *delegate) LocalState(join bool) []byte {
 	state := [2]string{
 		d.name,
@@ -135,6 +145,9 @@ func (d *delegate) LocalState(join bool) []byte {
 	return []byte(data)
 }
 
+// MergeRemoteState is executed when LocalState from other node is received.
+// If our retained messages hash is different than most common hash in cluster,
+// lets sync retained messages from other nodes.
 func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 	state := [2]string{}
 	err := jsonUnmarshal(buf, &state)
@@ -143,20 +156,25 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 	}
 
 	d.retainedHash.Set(state[0], state[1])
-	//	log.Printf("retainedHash: %+v", d.retainedHash)
 
 	localHashEntry := d.retainedHash.Get(d.name)
-	popularHash, nodes := d.retainedHash.PopularHash()
 
-	//	log.Printf("localHash: %+v popularHash: %+v", localHashEntry.Hash, popularHash)
+	if time.Since(d.lastSync) < d.pushPullInterval {
+		return
+	}
 
 	if time.Since(localHashEntry.LastUpdated) < d.pushPullInterval*2 {
 		return
 	}
 
+	popularHash, nodes := d.retainedHash.PopularHash()
+
 	if localHashEntry.Hash != popularHash {
 		log.Printf("syncing retained messages from %v", nodes)
-		d.bus.Publish("discovery:request_retained", nodes[0])
+		d.lastSync = time.Now()
+		for _, node := range nodes {
+			d.bus.Publish("discovery:request_retained", node)
+		}
 	}
 }
 
@@ -168,7 +186,6 @@ type delegateEvent struct {
 }
 
 // NotifyJoin is executed when node join cluster.
-// We are skipping NotifyJoin for ourselfs.
 func (d *delegateEvent) NotifyJoin(n *memberlist.Node) {
 	if n.String() == d.name {
 		return
