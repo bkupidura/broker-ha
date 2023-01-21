@@ -20,7 +20,7 @@ func TestCreateMemberlistConfig(t *testing.T) {
 		{
 			config: []byte(`
                 tcp_timeout: 100
-                push_pull_interval: 15000
+                push_pull_interval: 20000
                 probe_interval: 200
                 probe_timeout: 200
                 gossip_interval: 100
@@ -33,7 +33,7 @@ func TestCreateMemberlistConfig(t *testing.T) {
 			expectedMLConfigFunc: func() *memberlist.Config {
 				mlConfig := memberlist.DefaultLocalConfig()
 				mlConfig.TCPTimeout = 100 * time.Millisecond
-				mlConfig.PushPullInterval = 15 * time.Second
+				mlConfig.PushPullInterval = 20 * time.Second
 				mlConfig.ProbeInterval = 200 * time.Millisecond
 				mlConfig.ProbeTimeout = 200 * time.Millisecond
 				mlConfig.GossipInterval = 100 * time.Millisecond
@@ -88,7 +88,6 @@ func TestGetConfig(t *testing.T) {
                   subscription_size:
                     "cluster:message_from": 1024
                     "broker:send_retained": 10
-                    "broker:pk_retained": 100
                 discovery:
                   subscription_size:
                     "cluster:message_to": 1024
@@ -98,7 +97,7 @@ func TestGetConfig(t *testing.T) {
                   expected_members: 3
                   config:
                     probe_interval: 500
-                    push_pull_interval: 15000
+                    push_pull_interval: 20000
                 `)
 				c.SetConfigType("yaml")
 				c.ReadConfig(bytes.NewBuffer(d))

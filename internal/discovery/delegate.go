@@ -157,27 +157,22 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 	state := [2]string{}
 	err := json.Unmarshal(buf, &state)
 	if err != nil {
-		log.Printf("unable to unmarshal remote state: %v", err)
 		return
 	}
-	log.Printf("received remote state from %v", state[0])
 
 	d.retainedHash.Set(state[0], state[1])
 
 	if join {
-		log.Printf("skipping joing remote state")
 		return
 	}
 
 	localHashEntry := d.retainedHash.Get(d.name)
 
-	if time.Since(d.lastSync) < d.pushPullInterval*2 {
-		log.Printf("skipping too frequent remote state")
+	if time.Since(d.lastSync) < d.pushPullInterval {
 		return
 	}
 
 	if time.Since(localHashEntry.LastUpdated) < d.pushPullInterval {
-		log.Printf("skipping remote state as we just updated retained hash")
 		return
 	}
 
