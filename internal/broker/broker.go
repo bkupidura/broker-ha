@@ -220,6 +220,11 @@ func (b *Broker) calculateRetainedHash() {
 		}
 		retainedMessages = append(retainedMessages, m)
 	}
+
+	if len(retainedMessages) < 1 {
+		return
+	}
+
 	sort.SliceStable(retainedMessages, func(i, j int) bool {
 		return retainedMessages[i].Topic < retainedMessages[j].Topic
 	})
@@ -238,7 +243,7 @@ func (b *Broker) calculateRetainedHash() {
 // eventLoop perform maintenance tasks.
 func (b *Broker) eventLoop(ctx context.Context, chFromCluster chan bus.Event, chBrokerSendRetained chan bus.Event) {
 	log.Printf("starting eventloop")
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {

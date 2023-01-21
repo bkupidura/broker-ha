@@ -810,6 +810,15 @@ func TestCalculateRetainedHash(t *testing.T) {
 			},
 		},
 		{
+			inputRetainedMessages: []packets.Packet{},
+			expectedLog: []string{
+				"",
+				"auth for MQTT disabled",
+				"starting eventloop",
+				"stopping eventloop",
+			},
+		},
+		{
 			inputRetainedMessages: []packets.Packet{
 				{
 					TopicName:       "test",
@@ -981,11 +990,17 @@ func TestCalculateRetainedHash(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		if test.expectedHash != "" {
-			e := <-ch
+		select {
+		case e := <-ch:
 			retainedHash := e.Data.(string)
-
+			if test.expectedHash == "" {
+				t.Fatalf("we should not receive %v hash", retainedHash)
+			}
 			require.Equal(t, test.expectedHash, retainedHash)
+		case <-time.After(5 * time.Millisecond):
+			if test.expectedHash != "" {
+				t.Fatalf("we should received %v hash", test.expectedHash)
+			}
 		}
 
 		if len(test.expectedLog) > 0 {
@@ -1020,11 +1035,13 @@ func TestEventLoop(t *testing.T) {
 		Qos:     1,
 	})
 	require.Nil(t, err)
+	time.Sleep(10 * time.Millisecond)
 
 	err = evBus.Publish("broker:send_retained", "node1")
 	require.Nil(t, err)
 
 	time.Sleep(10 * time.Millisecond)
+
 	cEvent := <-chClusterMessageTo
 	message := cEvent.Data.(types.DiscoveryPublishMessage)
 	require.Equal(t, types.DiscoveryPublishMessage{
@@ -1035,7 +1052,7 @@ func TestEventLoop(t *testing.T) {
 		Node:    []string{"node1"},
 	}, message)
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(10 * time.Second)
 
 	rEvent := <-chDiscoveryRetainedHash
 	hash := rEvent.Data.(string)
