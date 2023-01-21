@@ -42,11 +42,13 @@ discovery:
   domain: broker-headless.broker-ha.svc.cluster.local
   subscription_size:
     "cluster:message_to": 1024
+    "discovery:request_retained": 10
+    "discovery:retained_hash": 10
 mqtt:
   port: 1883
   subscription_size:
     "cluster:message_from": 1024
-    "cluster:new_member": 10
+    "broker:send_retained": 10
   auth:
     - username: test
       password: test
@@ -86,15 +88,18 @@ Default config:
 discovery:
   subscription_size:
     "cluster:message_to": 1024
+    "discovery:request_retained": 10
+    "discovery:retained_hash": 10
 mqtt:
   port: 1883
   subscription_size:
     "cluster:message_from": 1024
-    "cluster:new_member": 10
+    "broker:send_retained": 10
 cluster:
   expected_members: 3
   config:
     probe_interval: 500
+    push_pull_interval: 20000
 ```
 
 ## K8s Manifest
@@ -159,6 +164,7 @@ data:
     cluster:
       config:
         probe_interval: 500
+        push_pull_interval: 20000
         secret_key: "someSecretKey13$"
 kind: ConfigMap
 metadata:
@@ -199,7 +205,7 @@ spec:
           httpGet:
             path: /ready
             port: 8080
-          initialDelaySeconds: 10
+          initialDelaySeconds: 40
           periodSeconds: 2
           successThreshold: 1
           timeoutSeconds: 1
