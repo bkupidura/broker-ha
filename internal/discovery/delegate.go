@@ -179,9 +179,14 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 	popularHash, nodes := d.retainedHash.PopularHash()
 
 	if localHashEntry.Hash != popularHash {
-		log.Printf("syncing retained messages from %v", nodes)
+		// If we have more than 2 nodes for sync, lets pick first two.
+		syncNodes := nodes
+		if len(syncNodes) > 2 {
+			syncNodes = nodes[:2]
+		}
+		log.Printf("quorum nodes %v syncing with %v", nodes, syncNodes)
 		d.lastSync = timeNow()
-		for _, node := range nodes {
+		for _, node := range syncNodes {
 			d.bus.Publish("discovery:request_retained", node)
 		}
 	}

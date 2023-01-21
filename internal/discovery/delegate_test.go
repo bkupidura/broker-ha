@@ -575,6 +575,52 @@ func TestDelegateMergeRemoteState(t *testing.T) {
 			expectedMessage:  []string{"node-1", "node-2"},
 			expectedLastSync: timeNow(),
 		},
+		{
+			inputDelegate: &delegate{
+				bus:  evBus,
+				name: "testDelegateMergeRemoteState",
+				retainedHash: &retainedHash{
+					hashMap: map[string]retainedHashEntry{
+						"testDelegateMergeRemoteState": {
+							Hash:        "hash",
+							LastUpdated: pastTime,
+						},
+						"node-2": {
+							Hash:        "hash1",
+							LastUpdated: pastTime,
+						},
+						"node-3": {
+							Hash:        "hash1",
+							LastUpdated: pastTime,
+						},
+					},
+				},
+				pushPullInterval: duration,
+			},
+			inputBuf: []byte(`["node-1", "hash1"]`),
+			expectedRetainHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{
+					"testDelegateMergeRemoteState": {
+						Hash:        "hash",
+						LastUpdated: pastTime,
+					},
+					"node-2": {
+						Hash:        "hash1",
+						LastUpdated: pastTime,
+					},
+					"node-3": {
+						Hash:        "hash1",
+						LastUpdated: pastTime,
+					},
+					"node-1": {
+						Hash:        "hash1",
+						LastUpdated: timeNow(),
+					},
+				},
+			},
+			expectedMessage:  []string{"node-1", "node-2"},
+			expectedLastSync: timeNow(),
+		},
 	}
 
 	ch, err := evBus.Subscribe("discovery:request_retained", "t", 1024)
