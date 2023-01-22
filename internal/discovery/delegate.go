@@ -67,6 +67,7 @@ func (r *retainedHash) Delete(node string) {
 
 // delegate implements memberlist.Delegate.
 type delegate struct {
+	mu               sync.Mutex
 	bus              *bus.Bus
 	name             string
 	retainedHash     *retainedHash
@@ -132,6 +133,9 @@ func (d *delegate) LocalState(join bool) []byte {
 // If our retained messages hash is different than most common hash in cluster,
 // lets sync retained messages from other nodes.
 func (d *delegate) MergeRemoteState(buf []byte, join bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	state := [2]string{}
 	err := json.Unmarshal(buf, &state)
 	if err != nil {
@@ -149,7 +153,7 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 
 	// If we recenty received retained message, skip current run
 	// unless we didnt run 4 syncs in a row.
-	if timeNow().Sub(localHashEntry.LastUpdated) < d.pushPullInterval/2 && timeNow().Sub(d.lastSync) < d.pushPullInterval*4 {
+	if timeNow().Sub(localHashEntry.LastUpdated) < d.pushPullInterval && timeNow().Sub(d.lastSync) < d.pushPullInterval*4 {
 		return
 	}
 
