@@ -178,10 +178,8 @@ func TestNew(t *testing.T) {
 			},
 			expectedLog: []string{
 				"",
-				"cluster broker started",
-				"starting handleNewMember worker",
-				"starting publishToMQTT worker",
 				"auth for MQTT disabled",
+				"starting eventloop",
 			},
 		},
 		{
@@ -192,9 +190,7 @@ func TestNew(t *testing.T) {
 			},
 			expectedLog: []string{
 				"",
-				"cluster broker started",
-				"starting handleNewMember worker",
-				"starting publishToMQTT worker",
+				"starting eventloop",
 			},
 		},
 	}
@@ -713,7 +709,7 @@ func TestPublishToMQTT(t *testing.T) {
 	for _, test := range tests {
 		logOutput.Reset()
 
-		evBus.Publish("cluster:message_from", test.inputMessage)
+		broker.publishToMQTT(test.inputMessage)
 
 		time.Sleep(1 * time.Millisecond)
 
@@ -735,7 +731,7 @@ func TestPublishToMQTT(t *testing.T) {
 	}
 }
 
-func TestHandleNewMember(t *testing.T) {
+func TestSendRetained(t *testing.T) {
 	tests := []struct {
 		inputNewMember  string
 		expectedMessage types.DiscoveryPublishMessage
@@ -769,11 +765,50 @@ func TestHandleNewMember(t *testing.T) {
 	require.Nil(t, err)
 
 	for _, test := range tests {
-		evBus.Publish("cluster:new_member", test.inputNewMember)
+		broker.sendRetained(test.inputNewMember)
 
 		e := <-ch
 		require.Equal(t, test.expectedMessage, e.Data.(types.DiscoveryPublishMessage))
 
 		time.Sleep(1 * time.Millisecond)
 	}
+}
+
+func TestEventLoop(t *testing.T) {
+	evBus := bus.New()
+	chClusterMessageTo, err := evBus.Subscribe("cluster:message_to", "t", 1024)
+	require.Nil(t, err)
+
+	broker, ctxCancel, err := New(&Options{
+		MQTTPort:         1883,
+		Bus:              evBus,
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
+	})
+	require.Nil(t, err)
+	defer broker.Shutdown()
+	defer ctxCancel()
+
+	err = evBus.Publish("cluster:message_from", types.MQTTPublishMessage{
+		Payload: []byte("test"),
+		Topic:   "TestEventLoop",
+		Retain:  true,
+		Qos:     1,
+	})
+	require.Nil(t, err)
+	time.Sleep(10 * time.Millisecond)
+
+	err = evBus.Publish("cluster:new_member", "127.0.0.1:9746")
+	require.Nil(t, err)
+
+	time.Sleep(10 * time.Millisecond)
+
+	cEvent := <-chClusterMessageTo
+	message := cEvent.Data.(types.DiscoveryPublishMessage)
+	require.Equal(t, types.DiscoveryPublishMessage{
+		Payload: []byte("test"),
+		Topic:   "TestEventLoop",
+		Retain:  true,
+		Qos:     1,
+		Node:    []string{"127.0.0.1:9746"},
+	}, message)
 }

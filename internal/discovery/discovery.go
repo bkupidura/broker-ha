@@ -49,6 +49,11 @@ type Discovery struct {
 
 // New creates new discovery instance.
 func New(opts *Options) (*Discovery, context.CancelFunc, error) {
+	for _, requiredSubscriptionSizeName := range []string{"cluster:message_to"} {
+		if _, ok := opts.SubscriptionSize[requiredSubscriptionSizeName]; !ok {
+			return nil, nil, fmt.Errorf("subscription size for %s not provided", requiredSubscriptionSizeName)
+		}
+	}
 	d := &Discovery{
 		domain:      opts.Domain,
 		config:      opts.MemberListConfig,
@@ -74,12 +79,7 @@ func New(opts *Options) (*Discovery, context.CancelFunc, error) {
 		bus: d.bus,
 	}
 
-	toClusterSize, ok := opts.SubscriptionSize["cluster:message_to"]
-	if !ok {
-		return nil, nil, fmt.Errorf("subscription size for cluster:message_to not provided")
-	}
-
-	chToCluster, err := d.bus.Subscribe("cluster:message_to", "discovery", toClusterSize)
+	chClusterMessageTo, err := d.bus.Subscribe("cluster:message_to", "discovery", opts.SubscriptionSize["cluster:message_to"])
 	if err != nil {
 		return nil, nil, err
 	}
@@ -94,7 +94,7 @@ func New(opts *Options) (*Discovery, context.CancelFunc, error) {
 	// ctx is used only by tests.
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
-	go d.publishToCluster(ctx, chToCluster)
+	go d.eventLoop(ctx, chClusterMessageTo)
 
 	return d, ctxCancel, nil
 }
@@ -208,67 +208,70 @@ func (d *Discovery) FormCluster(minInitSleep, maxInitSleep int) error {
 // It will try to fetch mergePublishToCluster number of messages from toClusterQueue.
 // Openning TCP session for every single message is expensive, so lets try to send as much messages as we can.
 // When there is no more messages in bus, we will send what we get and dont wait.
-func (d *Discovery) publishToCluster(ctx context.Context, ch chan bus.Event) {
-	log.Printf("starting publishToCluster worker")
-
-	for {
-		mqttPublishBatch := map[string][]types.DiscoveryPublishMessage{}
-		select {
-		case event := <-ch:
-			message := event.Data.(types.DiscoveryPublishMessage)
-			populatePublishBatch(mqttPublishBatch, message)
-
-		fetchMultiple:
-			for i := 0; i < mergePublishToCluster; i++ {
-				select {
-				case event := <-ch:
-					message := event.Data.(types.DiscoveryPublishMessage)
-					populatePublishBatch(mqttPublishBatch, message)
-				default:
-					break fetchMultiple
-				}
+func (d *Discovery) publishToCluster(mqttPublishBatch map[string][]types.DiscoveryPublishMessage) {
+	for _, member := range d.Members(false) {
+		var messagesForMember []types.DiscoveryPublishMessage
+		if messagesForAll, ok := mqttPublishBatch["all"]; ok {
+			messagesForMember = messagesForAll
+		}
+		if messages, ok := mqttPublishBatch[member.Address()]; ok {
+			messagesForMember = append(messagesForMember, messages...)
+		}
+		if len(messagesForMember) > 0 {
+			messageMarshal, err := jsonMarshal(messagesForMember)
+			if err != nil {
+				log.Printf("unable to marshal to cluster message %s: %s", member.Address(), err)
+				continue
 			}
-
-			for _, member := range d.Members(false) {
-				var messagesForMember []types.DiscoveryPublishMessage
-				if messagesForAll, ok := mqttPublishBatch["all"]; ok {
-					messagesForMember = messagesForAll
-				}
-				if messages, ok := mqttPublishBatch[member.Address()]; ok {
-					messagesForMember = append(messagesForMember, messages...)
-				}
-				if len(messagesForMember) > 0 {
-					messageMarshal, err := jsonMarshal(messagesForMember)
-					if err != nil {
-						log.Printf("unable to marshal to cluster message %s: %s", member.Address(), err)
+			go func(m *memberlist.Node, data []byte) {
+				for retries := 1; retries <= sendRetries; retries++ {
+					if err := d.SendReliable(m, "MQTTPublish", data); err != nil {
+						log.Printf("unable to publish message to cluster member %s (retries %d/%d): %s", m.Address(), retries, sendRetries, err)
+						time.Sleep(time.Duration(retries*sendRetriesInterval) * time.Millisecond)
 						continue
 					}
-					go func(m *memberlist.Node, data []byte) {
-						for retries := 1; retries <= sendRetries; retries++ {
-							if err := d.SendReliable(m, "MQTTPublish", data); err != nil {
-								log.Printf("unable to publish message to cluster member %s (retries %d/%d): %s", m.Address(), retries, sendRetries, err)
-								time.Sleep(time.Duration(retries*sendRetriesInterval) * time.Millisecond)
-								continue
-							}
-							return
-						}
-					}(member, messageMarshal)
+					return
 				}
-			}
-		case <-ctx.Done():
-			log.Printf("publishToCluster worker done")
-			return
+			}(member, messageMarshal)
 		}
 	}
 }
 
-// populatePublishBatch will prepare map[string][]*MQTTPublishMessage before sending it to cluster.
+// populatePublishBatch will prepare map[string][]MQTTPublishMessage before sending it to cluster.
 func populatePublishBatch(publishBatch map[string][]types.DiscoveryPublishMessage, message types.DiscoveryPublishMessage) {
 	if len(message.Node) == 0 {
 		message.Node = []string{"all"}
 	}
 	for _, member := range message.Node {
 		publishBatch[member] = append(publishBatch[member], message)
+	}
+}
+
+// eventLoop perform maintenance tasks.
+func (d *Discovery) eventLoop(ctx context.Context, chClusterMessageTo chan bus.Event) {
+	log.Printf("starting eventloop")
+	for {
+		select {
+		case event := <-chClusterMessageTo:
+			mqttPublishBatch := map[string][]types.DiscoveryPublishMessage{}
+			message := event.Data.(types.DiscoveryPublishMessage)
+			populatePublishBatch(mqttPublishBatch, message)
+
+		fetchMultiple:
+			for i := 0; i < mergePublishToCluster; i++ {
+				select {
+				case event := <-chClusterMessageTo:
+					message := event.Data.(types.DiscoveryPublishMessage)
+					populatePublishBatch(mqttPublishBatch, message)
+				default:
+					break fetchMultiple
+				}
+			}
+			d.publishToCluster(mqttPublishBatch)
+		case <-ctx.Done():
+			log.Printf("stopping eventloop")
+			return
+		}
 	}
 }
 

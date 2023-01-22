@@ -119,9 +119,15 @@ func TestNew(t *testing.T) {
 		}
 		if test.mockNetInterfaceAddrs != nil {
 			netInterfaceAddrs = test.mockNetInterfaceAddrs
+			defer func() {
+				netInterfaceAddrs = net.InterfaceAddrs
+			}()
 		}
 		if test.mockMemberlistCreate != nil {
 			memberlistCreate = test.mockMemberlistCreate
+			defer func() {
+				memberlistCreate = memberlist.Create
+			}()
 		}
 		test.inputOptions.Bus = b
 		output, cancelFunc, err := New(test.inputOptions)
@@ -729,9 +735,11 @@ func TestPublishToCluster(t *testing.T) {
 		jsonMarshal = test.jsonMarshal
 		go test.queueDataTypesFunc()
 
+		mqttPublishBatch := map[string][]types.DiscoveryPublishMessage{}
 		for _, m := range test.inputMessage {
-			evBus.Publish("cluster:message_to", m)
+			populatePublishBatch(mqttPublishBatch, m)
 		}
+		disco.publishToCluster(mqttPublishBatch)
 
 		time.Sleep(500 * time.Millisecond)
 		require.Equal(t, test.expectedLog, logOutput.String())
@@ -743,7 +751,60 @@ func TestPublishToCluster(t *testing.T) {
 		logOutput.Reset()
 		time.Sleep(10 * time.Millisecond)
 	}
+}
 
+func TestEventLoop(t *testing.T) {
+	md := &mockDelegate{}
+	c1 := memberlist.DefaultLocalConfig()
+	c1.BindPort = 7947
+	c1.Name = "node1"
+	c1.BindAddr = "127.0.0.1"
+	c1.LogOutput = ioutil.Discard
+	c1.Delegate = md
+	m1, err := memberlist.Create(c1)
+	if err != nil {
+		t.Fatalf("memberlist.Create error: %s", err)
+	}
+	defer m1.Shutdown()
+
+	mlConfig := memberlist.DefaultLocalConfig()
+	mlConfig.BindPort = 7946
+	mlConfig.Name = "node2"
+	mlConfig.BindAddr = "127.0.0.1"
+	mlConfig.LogOutput = ioutil.Discard
+	evBus := bus.New()
+
+	disco, ctxCancel, err := New(&Options{
+		MemberListConfig: mlConfig,
+		Bus:              evBus,
+		Domain:           "test",
+		SubscriptionSize: map[string]int{"cluster:message_to": 1024},
+	})
+	require.Nil(t, err)
+	defer disco.Shutdown()
+	defer ctxCancel()
+
+	log.SetFlags(0)
+	var logOutput bytes.Buffer
+	log.SetOutput(&logOutput)
+
+	_, err = m1.Join([]string{"127.0.0.1:7946"})
+	require.Nil(t, err)
+
+	evBus.Publish("cluster:message_to", types.DiscoveryPublishMessage{})
+	time.Sleep(10 * time.Millisecond)
+	expectedData := string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...))
+	require.Equal(t, expectedData, string(md.GetData()))
+
+	for _, message := range []types.DiscoveryPublishMessage{
+		{},
+		{Node: []string{}},
+	} {
+		evBus.Publish("cluster:message_to", message)
+	}
+	time.Sleep(10 * time.Millisecond)
+	expectedData = string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...))
+	require.Equal(t, expectedData, string(md.GetData()))
 }
 
 func TestGetLocalIPs(t *testing.T) {
@@ -810,6 +871,9 @@ func TestGetLocalIPs(t *testing.T) {
 	for _, test := range tests {
 		if test.mockNetInterfaceAddrs != nil {
 			netInterfaceAddrs = test.mockNetInterfaceAddrs
+			go func() {
+				netInterfaceAddrs = net.InterfaceAddrs
+			}()
 		}
 		output, err := getLocalIPs()
 		require.Equal(t, test.expectedOutput, output)
@@ -945,7 +1009,13 @@ func TestGetInitialMemberIPs(t *testing.T) {
 		logOutput.Reset()
 
 		netLookupSRV = test.mockNetLookupSRV
+		defer func() {
+			netLookupSRV = net.LookupSRV
+		}()
 		netLookupIP = test.mockNetLookupIP
+		defer func() {
+			netLookupIP = net.LookupIP
+		}()
 		output, err := getInitialMemberIPs("test")
 		require.Equal(t, test.expectedLog, logOutput.String())
 		require.Equal(t, test.expectedOutput, output)

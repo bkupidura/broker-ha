@@ -35,27 +35,25 @@ type Broker struct {
 
 // New creates and starts Broker instance.
 func New(opts *Options) (*Broker, context.CancelFunc, error) {
-	fromClusterSize, ok := opts.SubscriptionSize["cluster:message_from"]
-	if !ok {
-		return nil, nil, fmt.Errorf("subscription size for cluster:message_from not provided")
+	for _, requiredSubscriptionSizeName := range []string{"cluster:message_from", "cluster:new_member"} {
+		if _, ok := opts.SubscriptionSize[requiredSubscriptionSizeName]; !ok {
+			return nil, nil, fmt.Errorf("subscription size for %s not provided", requiredSubscriptionSizeName)
+		}
 	}
 
-	chFromCluster, err := opts.Bus.Subscribe("cluster:message_from", "broker", fromClusterSize)
+	chClusterMessageFrom, err := opts.Bus.Subscribe("cluster:message_from", "broker", opts.SubscriptionSize["cluster:message_from"])
 	if err != nil {
 		return nil, nil, err
 	}
 
-	newMemberSize, ok := opts.SubscriptionSize["cluster:new_member"]
-	if !ok {
-		return nil, nil, fmt.Errorf("subscription size for cluster:new_member not provided")
-	}
-	chNewMember, err := opts.Bus.Subscribe("cluster:new_member", "broker", newMemberSize)
+	chClusterNewMember, err := opts.Bus.Subscribe("cluster:new_member", "broker", opts.SubscriptionSize["cluster:new_member"])
 	if err != nil {
 		return nil, nil, err
 	}
 
 	mqttDefaultCapabilities := mqtt.DefaultServerCapabilities
-	mqttDefaultCapabilities.MaximumMessageExpiryInterval = 60 * 30
+	// We wants very long expiry time not to lose any retained messages.
+	mqttDefaultCapabilities.MaximumMessageExpiryInterval = 60 * 60 * 24 * 30 * 12
 
 	mqttServer := mqtt.New(&mqtt.Options{
 		Capabilities: mqttDefaultCapabilities,
@@ -102,10 +100,7 @@ func New(opts *Options) (*Broker, context.CancelFunc, error) {
 	// ctx is used only by tests.
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
-	go broker.publishToMQTT(ctx, chFromCluster)
-	go broker.handleNewMember(ctx, chNewMember)
-
-	log.Printf("cluster broker started")
+	go broker.eventLoop(ctx, chClusterMessageFrom, chClusterNewMember)
 
 	return broker, ctxCancel, nil
 }
@@ -183,42 +178,39 @@ func (b *Broker) Subscribers(filter string) *mqtt.Subscribers {
 }
 
 // publishToMQTT will receive messages from discovery (memberlist), and publish them to local mqtt server.
-func (b *Broker) publishToMQTT(ctx context.Context, ch chan bus.Event) {
-	log.Printf("starting publishToMQTT worker")
-	for {
-		select {
-		case event := <-ch:
-			message := event.Data.(types.MQTTPublishMessage)
-			if err := b.server.Publish(message.Topic, message.Payload, message.Retain, message.Qos); err != nil {
-				log.Printf("unable to publish message from cluster %v: %s", message, err)
-			}
-		case <-ctx.Done():
-			log.Printf("publishToMQTT worker done")
-			return
-		}
+func (b *Broker) publishToMQTT(message types.MQTTPublishMessage) {
+	if err := b.server.Publish(message.Topic, message.Payload, message.Retain, message.Qos); err != nil {
+		log.Printf("unable to publish message from cluster %v: %s", message, err)
 	}
 }
 
-// handleNewMember will receive cluster member which just joined cluster.
-// We will send all localy retained messages to new node and sync it with rest of the cluster.
-func (b *Broker) handleNewMember(ctx context.Context, ch chan bus.Event) {
-	log.Printf("starting handleNewMember worker")
+// sendRetained will send all retained messages to requested node.
+func (b *Broker) sendRetained(member string) {
+	for _, message := range b.Messages("#") {
+		m := types.DiscoveryPublishMessage{
+			Payload: message.Payload,
+			Topic:   message.TopicName,
+			Retain:  message.FixedHeader.Retain,
+			Qos:     message.FixedHeader.Qos,
+			Node:    []string{member},
+		}
+		b.bus.Publish("cluster:message_to", m)
+	}
+}
+
+// eventLoop perform maintenance tasks.
+func (b *Broker) eventLoop(ctx context.Context, chClusterMessageFrom chan bus.Event, chClusterNewMember chan bus.Event) {
+	log.Printf("starting eventloop")
 	for {
 		select {
-		case event := <-ch:
+		case event := <-chClusterMessageFrom:
+			message := event.Data.(types.MQTTPublishMessage)
+			b.publishToMQTT(message)
+		case event := <-chClusterNewMember:
 			member := event.Data.(string)
-			for _, message := range b.Messages("#") {
-				m := types.DiscoveryPublishMessage{
-					Payload: message.Payload,
-					Topic:   message.TopicName,
-					Retain:  message.FixedHeader.Retain,
-					Qos:     message.FixedHeader.Qos,
-					Node:    []string{member},
-				}
-				b.bus.Publish("cluster:message_to", m)
-			}
+			b.sendRetained(member)
 		case <-ctx.Done():
-			log.Printf("handleNewMember worker done")
+			log.Printf("stopping eventloop")
 			return
 		}
 	}
