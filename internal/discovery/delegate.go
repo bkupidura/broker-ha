@@ -146,26 +146,23 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 
 	localHashEntry := d.retainedHash.Get(d.name)
 
-	log.Printf("d.pushPullInterval %v\nd.lastSync %v\nlocalHashEntry.LastUpdated %v\ntimeNow().Sub(d.lastSync) %v\ntimeNow().Sub(localHashEntry.LastUpdated) %v", d.pushPullInterval, d.lastSync, localHashEntry.LastUpdated, timeNow().Sub(d.lastSync), timeNow().Sub(localHashEntry.LastUpdated))
+	log.Printf("d.pushPullInterval %v\ntimeNow().Sub(d.lastSync) %v\ntimeNow().Sub(localHashEntry.LastUpdated) %v", d.pushPullInterval, timeNow().Sub(d.lastSync), timeNow().Sub(localHashEntry.LastUpdated))
 
-	// If we synced retained messages in last run, skip current run.
+	// If we synced retained messages in recently, skip this run.
 	if timeNow().Sub(d.lastSync) < d.pushPullInterval {
 		return
 	}
 
 	// If we recenty received retained message, skip current run
-	// unless we didnt run 4 syncs in a row.
-	if timeNow().Sub(localHashEntry.LastUpdated) < d.pushPullInterval && timeNow().Sub(d.lastSync) < d.pushPullInterval*4 {
+	// unless we didnt run 6 syncs in a row.
+	if timeNow().Sub(localHashEntry.LastUpdated) < d.pushPullInterval*2 && timeNow().Sub(d.lastSync) < d.pushPullInterval*6 {
 		return
 	}
 
-	for node, retainedHashEntry := range d.retainedHash.GetAll() {
-		if localHashEntry.Hash != retainedHashEntry.Hash {
-			log.Printf("fetching retained messages from %v", node)
-			d.lastSync = timeNow()
-			d.bus.Publish("discovery:request_retained", node)
-			return
-		}
+	if localHashEntry.Hash != state[1] {
+		log.Printf("fetching retained messages from %v", state[0])
+		d.lastSync = timeNow()
+		d.bus.Publish("discovery:request_retained", state[0])
 	}
 }
 
