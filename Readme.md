@@ -199,7 +199,7 @@ spec:
           httpGet:
             path: /ready
             port: 8080
-          initialDelaySeconds: 10
+          initialDelaySeconds: 30
           periodSeconds: 2
           successThreshold: 1
           timeoutSeconds: 1
