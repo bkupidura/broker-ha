@@ -144,26 +144,45 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 
 	d.retainedHash.Set(state[0], state[1])
 
-	localHashEntry := d.retainedHash.Get(d.name)
-
-	log.Printf("d.pushPullInterval %v\ntimeNow().Sub(d.lastSync) %v\ntimeNow().Sub(localHashEntry.LastUpdated) %v", d.pushPullInterval, timeNow().Sub(d.lastSync), timeNow().Sub(localHashEntry.LastUpdated))
-
 	// If we synced retained messages in recently, skip this run.
-	if timeNow().Sub(d.lastSync) < d.pushPullInterval {
+	if timeNow().Sub(d.lastSync) < d.pushPullInterval*2 {
+		log.Printf("skipping MergeRemoteState, synced too recently")
 		return
 	}
 
-	// If we recenty received retained message, skip current run
-	// unless we didnt run 6 syncs in a row.
-	if timeNow().Sub(localHashEntry.LastUpdated) < d.pushPullInterval*2 && timeNow().Sub(d.lastSync) < d.pushPullInterval*6 {
+	localHash := d.retainedHash.Get(d.name)
+
+	if localHash.Hash == state[1] {
+		log.Printf("skipping MergeRemoteState, same hash already")
 		return
 	}
 
-	if localHashEntry.Hash != state[1] {
-		log.Printf("fetching retained messages from %v", state[0])
-		d.lastSync = timeNow()
-		d.bus.Publish("discovery:request_retained", state[0])
-	}
+	go func(node string) {
+		log.Printf("starting go func()")
+		chDiscoveryRetainedHash, err := d.bus.Subscribe("discovery:retained_hash", "MergeRemoteState", 2)
+		if err != nil {
+			log.Printf("unable to create discovery:retained_hash subscriber: %v", err)
+			return
+		}
+		defer d.bus.Unsubscribe("discovery:retained_hash", "MergeRemoteState")
+
+		select {
+		case e := <-chDiscoveryRetainedHash:
+			localHash := e.Data.(string)
+			log.Printf("received hash from chDiscoveryRetainedHash %v", localHash)
+			remoteHash := d.retainedHash.Get(node)
+			if localHash != remoteHash.Hash {
+				log.Printf("fetching retained messages from %v", state[0])
+				d.lastSync = timeNow()
+				d.bus.Publish("discovery:request_retained", state[0])
+			} else {
+				log.Printf("skipping sync gofunc, same hash")
+			}
+		case <-time.After(11 * time.Second):
+			log.Printf("timeout in go func()")
+		}
+
+	}(state[0])
 }
 
 // delegateEvent implements memberlist.EventDelegate.
