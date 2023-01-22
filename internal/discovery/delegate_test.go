@@ -18,57 +18,170 @@ import (
 )
 
 func TestRetainedHashSet(t *testing.T) {
-	r := &retainedHash{
-		hashMap: map[string]retainedHashEntry{},
+	timeNow = func() time.Time {
+		return time.Date(2023, time.January, 20, 1, 2, 3, 4, time.UTC)
+	}
+	defer func() {
+		timeNow = time.Now
+	}()
+	duration, err := time.ParseDuration("10s")
+	require.Nil(t, err)
+	pastTime100 := timeNow().Add(-10 * duration)
+
+	tests := []struct {
+		inputRetainedHash    *retainedHash
+		inputNode            string
+		inputHash            string
+		expectedRetainedHash *retainedHash
+	}{
+		{
+			inputRetainedHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{},
+			},
+			inputHash: "hash",
+			expectedRetainedHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{},
+			},
+		},
+		{
+			inputRetainedHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{},
+			},
+			inputNode: "node-1",
+			expectedRetainedHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{},
+			},
+		},
+		{
+			inputRetainedHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{
+					"node-1": {
+						Hash:        "hash",
+						LastUpdated: pastTime100,
+					},
+				},
+			},
+			inputHash: "hash",
+			inputNode: "node-1",
+			expectedRetainedHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{
+					"node-1": {
+						Hash:        "hash",
+						LastUpdated: pastTime100,
+					},
+				},
+			},
+		},
+		{
+			inputRetainedHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{
+					"node-1": {
+						Hash:        "hash",
+						LastUpdated: pastTime100,
+					},
+				},
+			},
+			inputHash: "hash2",
+			inputNode: "node-1",
+			expectedRetainedHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{
+					"node-1": {
+						Hash:        "hash2",
+						LastUpdated: timeNow(),
+					},
+				},
+			},
+		},
+		{
+			inputRetainedHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{
+					"node-1": {
+						Hash:        "hash",
+						LastUpdated: pastTime100,
+					},
+				},
+			},
+			inputHash: "hash2",
+			inputNode: "node-2",
+			expectedRetainedHash: &retainedHash{
+				hashMap: map[string]retainedHashEntry{
+					"node-1": {
+						Hash:        "hash",
+						LastUpdated: pastTime100,
+					},
+					"node-2": {
+						Hash:        "hash2",
+						LastUpdated: timeNow(),
+					},
+				},
+			},
+		},
 	}
 
-	before := time.Now()
-	time.Sleep(1 * time.Millisecond)
-	r.Set("node-1", "node-1-hash")
-	time.Sleep(1 * time.Millisecond)
-	after := time.Now()
-	node1 := r.hashMap["node-1"]
-
-	require.Equal(t, "node-1-hash", node1.Hash)
-	require.Less(t, before, node1.LastUpdated)
-	require.Greater(t, after, node1.LastUpdated)
-
-	r.Set("", "hash")
-	require.Equal(t, 1, len(r.hashMap))
-
-	r.Set("a", "")
-	require.Equal(t, 1, len(r.hashMap))
-
-	time.Sleep(1 * time.Second)
-	now := time.Now()
-
-	r.Set("node-1", "node-1-hash")
-	require.Equal(t, "node-1-hash", node1.Hash)
-	require.Equal(t, node1.LastUpdated, node1.LastUpdated)
-	require.Greater(t, now, node1.LastUpdated)
+	for _, test := range tests {
+		r := test.inputRetainedHash
+		r.Set(test.inputNode, test.inputHash)
+		require.Equal(t, test.expectedRetainedHash, r)
+	}
 }
 
 func TestRetainedHashGet(t *testing.T) {
-	before := time.Now()
-	time.Sleep(1 * time.Millisecond)
+	timeNow = func() time.Time {
+		return time.Date(2023, time.January, 20, 1, 2, 3, 4, time.UTC)
+	}
+	defer func() {
+		timeNow = time.Now
+	}()
 	r := &retainedHash{
 		hashMap: map[string]retainedHashEntry{
 			"node-2": {
 				Hash:        "node-2-hash",
-				LastUpdated: time.Now(),
+				LastUpdated: timeNow(),
 			},
 		},
 	}
-	time.Sleep(1 * time.Millisecond)
-	after := time.Now()
 
 	e := r.Get("node-2")
 	require.Equal(t, "node-2-hash", e.Hash)
-	require.Less(t, before, e.LastUpdated)
-	require.Greater(t, after, e.LastUpdated)
+	require.Equal(t, timeNow(), e.LastUpdated)
 
 	e = r.Get("missing")
 	require.Equal(t, retainedHashEntry{}, e)
+}
+
+func TestRetainedHashGetAll(t *testing.T) {
+	timeNow = func() time.Time {
+		return time.Date(2023, time.January, 20, 1, 2, 3, 4, time.UTC)
+	}
+	defer func() {
+		timeNow = time.Now
+	}()
+	r := &retainedHash{
+		hashMap: map[string]retainedHashEntry{
+			"node-2": {
+				Hash:        "node-2-hash",
+				LastUpdated: timeNow(),
+			},
+			"node-1": {
+				Hash:        "node-1-hash",
+				LastUpdated: timeNow(),
+			},
+		},
+	}
+	expectedRetainHash := &retainedHash{
+		hashMap: map[string]retainedHashEntry{
+			"node-2": {
+				Hash:        "node-2-hash",
+				LastUpdated: timeNow(),
+			},
+			"node-1": {
+				Hash:        "node-1-hash",
+				LastUpdated: timeNow(),
+			},
+		},
+	}
+	all := r.GetAll()
+	require.Equal(t, expectedRetainHash.hashMap, all)
 }
 
 func TestRetainedHashDelete(t *testing.T) {
@@ -87,141 +200,6 @@ func TestRetainedHashDelete(t *testing.T) {
 
 	r.Delete("node-2")
 	require.Equal(t, 0, len(r.hashMap))
-}
-
-func TestRetainedHashPopularHash(t *testing.T) {
-	tests := []struct {
-		inputRetainedHash       *retainedHash
-		expectedMostPopularHash string
-		expectedNodes           []string
-	}{
-		{
-			inputRetainedHash: &retainedHash{
-				hashMap: map[string]retainedHashEntry{
-					"node-2": {
-						Hash:        "hash1",
-						LastUpdated: time.Now(),
-					},
-				},
-			},
-			expectedMostPopularHash: "hash1",
-			expectedNodes:           []string{"node-2"},
-		},
-		{
-			inputRetainedHash: &retainedHash{
-				hashMap: map[string]retainedHashEntry{
-					"node-2": {
-						Hash:        "hash1",
-						LastUpdated: time.Now(),
-					},
-					"node-3": {
-						Hash:        "hash2",
-						LastUpdated: time.Now(),
-					},
-				},
-			},
-			expectedMostPopularHash: "hash1",
-			expectedNodes:           []string{"node-2"},
-		},
-		{
-			inputRetainedHash: &retainedHash{
-				hashMap: map[string]retainedHashEntry{
-					"node-2": {
-						Hash:        "hash1",
-						LastUpdated: time.Now(),
-					},
-					"node-3": {
-						Hash:        "hash2",
-						LastUpdated: time.Now(),
-					},
-					"node-4": {
-						Hash:        "hash3",
-						LastUpdated: time.Now(),
-					},
-				},
-			},
-			expectedMostPopularHash: "hash1",
-			expectedNodes:           []string{"node-2"},
-		},
-		{
-			inputRetainedHash: &retainedHash{
-				hashMap: map[string]retainedHashEntry{
-					"node-2": {
-						Hash:        "hash1",
-						LastUpdated: time.Now(),
-					},
-					"node-3": {
-						Hash:        "hash2",
-						LastUpdated: time.Now(),
-					},
-					"node-4": {
-						Hash:        "hash2",
-						LastUpdated: time.Now(),
-					},
-				},
-			},
-			expectedMostPopularHash: "hash2",
-			expectedNodes:           []string{"node-3", "node-4"},
-		},
-		{
-			inputRetainedHash: &retainedHash{
-				hashMap: map[string]retainedHashEntry{
-					"node-2": {
-						Hash:        "hash1",
-						LastUpdated: time.Now(),
-					},
-					"node-3": {
-						Hash:        "hash1",
-						LastUpdated: time.Now(),
-					},
-					"node-4": {
-						Hash:        "hash2",
-						LastUpdated: time.Now(),
-					},
-					"node-5": {
-						Hash:        "hash2",
-						LastUpdated: time.Now(),
-					},
-				},
-			},
-			expectedMostPopularHash: "hash1",
-			expectedNodes:           []string{"node-2", "node-3"},
-		},
-		{
-			inputRetainedHash: &retainedHash{
-				hashMap: map[string]retainedHashEntry{
-					"node-2": {
-						Hash:        "hash1",
-						LastUpdated: time.Now(),
-					},
-					"node-3": {
-						Hash:        "hash1",
-						LastUpdated: time.Now(),
-					},
-					"node-4": {
-						Hash:        "hash2",
-						LastUpdated: time.Now(),
-					},
-					"node-5": {
-						Hash:        "hash2",
-						LastUpdated: time.Now(),
-					},
-					"node-6": {
-						Hash:        "hash2",
-						LastUpdated: time.Now(),
-					},
-				},
-			},
-			expectedMostPopularHash: "hash2",
-			expectedNodes:           []string{"node-4", "node-5", "node-6"},
-		},
-	}
-	for _, test := range tests {
-		popularHash, nodes := test.inputRetainedHash.PopularHash()
-		require.Equal(t, test.expectedMostPopularHash, popularHash)
-		require.Equal(t, test.expectedNodes, nodes)
-	}
-
 }
 
 func TestDelegateNodeMeta(t *testing.T) {
@@ -402,9 +380,11 @@ func TestDelegateMergeRemoteState(t *testing.T) {
 	defer func() {
 		timeNow = time.Now
 	}()
-	duration, err := time.ParseDuration("1s")
-	pastTime := time.Now().Add(-10 * duration)
-	futureTime := time.Now().Add(10 * duration)
+	duration, err := time.ParseDuration("10s")
+	require.Nil(t, err)
+	pastTime100 := timeNow().Add(-10 * duration)                   // 100 seconds ago
+	pastTime30 := timeNow().Add(-3 * duration)                     // 30 seconds ago
+	pastTime9 := timeNow().Add(-1 * duration).Add(1 * time.Second) // 9 seconds ago
 
 	evBus := bus.New()
 	tests := []struct {
@@ -432,41 +412,12 @@ func TestDelegateMergeRemoteState(t *testing.T) {
 		{
 			inputDelegate: &delegate{
 				bus:  evBus,
-				name: "testDelegateMergeRemoteState",
-				retainedHash: &retainedHash{
-					hashMap: map[string]retainedHashEntry{
-						"node-2": {
-							Hash:        "hash1",
-							LastUpdated: pastTime,
-						},
-					},
-				},
-				pushPullInterval: duration,
-			},
-			inputBuf:  []byte(`["node-1", "hash1"]`),
-			inputJoin: true,
-			expectedRetainHash: &retainedHash{
-				hashMap: map[string]retainedHashEntry{
-					"node-1": {
-						Hash:        "hash1",
-						LastUpdated: timeNow(),
-					},
-					"node-2": {
-						Hash:        "hash1",
-						LastUpdated: pastTime,
-					},
-				},
-			},
-		},
-		{
-			inputDelegate: &delegate{
-				bus:  evBus,
-				name: "testDelegateMergeRemoteState",
+				name: "testDelegateMergeRemoteState-0",
 				retainedHash: &retainedHash{
 					hashMap: map[string]retainedHashEntry{},
 				},
 				pushPullInterval: duration,
-				lastSync:         futureTime,
+				lastSync:         pastTime9,
 			},
 			inputBuf: []byte(`["node-1", "hash1"]`),
 			expectedRetainHash: &retainedHash{
@@ -477,28 +428,29 @@ func TestDelegateMergeRemoteState(t *testing.T) {
 					},
 				},
 			},
-			expectedLastSync: futureTime,
+			expectedLastSync: pastTime9,
 		},
 		{
 			inputDelegate: &delegate{
 				bus:  evBus,
-				name: "testDelegateMergeRemoteState",
+				name: "testDelegateMergeRemoteState-1",
 				retainedHash: &retainedHash{
 					hashMap: map[string]retainedHashEntry{
-						"testDelegateMergeRemoteState": {
+						"testDelegateMergeRemoteState-1": {
 							Hash:        "hash",
-							LastUpdated: futureTime,
+							LastUpdated: timeNow(),
 						},
 					},
 				},
 				pushPullInterval: duration,
+				lastSync:         pastTime30,
 			},
 			inputBuf: []byte(`["node-1", "hash1"]`),
 			expectedRetainHash: &retainedHash{
 				hashMap: map[string]retainedHashEntry{
-					"testDelegateMergeRemoteState": {
+					"testDelegateMergeRemoteState-1": {
 						Hash:        "hash",
-						LastUpdated: futureTime,
+						LastUpdated: timeNow(),
 					},
 					"node-1": {
 						Hash:        "hash1",
@@ -506,27 +458,29 @@ func TestDelegateMergeRemoteState(t *testing.T) {
 					},
 				},
 			},
+			expectedLastSync: pastTime30,
 		},
 		{
 			inputDelegate: &delegate{
 				bus:  evBus,
-				name: "testDelegateMergeRemoteState",
+				name: "testDelegateMergeRemoteState-2",
 				retainedHash: &retainedHash{
 					hashMap: map[string]retainedHashEntry{
-						"testDelegateMergeRemoteState": {
+						"testDelegateMergeRemoteState-2": {
 							Hash:        "hash",
-							LastUpdated: pastTime,
+							LastUpdated: timeNow(),
 						},
 					},
 				},
 				pushPullInterval: duration,
+				lastSync:         pastTime100,
 			},
 			inputBuf: []byte(`["node-1", "hash1"]`),
 			expectedRetainHash: &retainedHash{
 				hashMap: map[string]retainedHashEntry{
-					"testDelegateMergeRemoteState": {
+					"testDelegateMergeRemoteState-2": {
 						Hash:        "hash",
-						LastUpdated: pastTime,
+						LastUpdated: timeNow(),
 					},
 					"node-1": {
 						Hash:        "hash1",
@@ -534,37 +488,30 @@ func TestDelegateMergeRemoteState(t *testing.T) {
 					},
 				},
 			},
+			expectedLastSync: timeNow(),
 			expectedMessage:  []string{"node-1"},
-			expectedLastSync: timeNow(),
 		},
 		{
 			inputDelegate: &delegate{
 				bus:  evBus,
-				name: "testDelegateMergeRemoteState",
+				name: "testDelegateMergeRemoteState-3",
 				retainedHash: &retainedHash{
 					hashMap: map[string]retainedHashEntry{
-						"testDelegateMergeRemoteState": {
+						"testDelegateMergeRemoteState-3": {
 							Hash:        "hash",
-							LastUpdated: pastTime,
-						},
-						"node-2": {
-							Hash:        "hash1",
-							LastUpdated: pastTime,
+							LastUpdated: pastTime100,
 						},
 					},
 				},
 				pushPullInterval: duration,
+				lastSync:         pastTime100,
 			},
 			inputBuf: []byte(`["node-1", "hash1"]`),
 			expectedRetainHash: &retainedHash{
 				hashMap: map[string]retainedHashEntry{
-					"testDelegateMergeRemoteState": {
+					"testDelegateMergeRemoteState-3": {
 						Hash:        "hash",
-						LastUpdated: pastTime,
-					},
-					"node-2": {
-						Hash:        "hash1",
-						LastUpdated: pastTime,
+						LastUpdated: pastTime100,
 					},
 					"node-1": {
 						Hash:        "hash1",
@@ -572,54 +519,8 @@ func TestDelegateMergeRemoteState(t *testing.T) {
 					},
 				},
 			},
-			expectedMessage:  []string{"node-1", "node-2"},
 			expectedLastSync: timeNow(),
-		},
-		{
-			inputDelegate: &delegate{
-				bus:  evBus,
-				name: "testDelegateMergeRemoteState",
-				retainedHash: &retainedHash{
-					hashMap: map[string]retainedHashEntry{
-						"testDelegateMergeRemoteState": {
-							Hash:        "hash",
-							LastUpdated: pastTime,
-						},
-						"node-2": {
-							Hash:        "hash1",
-							LastUpdated: pastTime,
-						},
-						"node-3": {
-							Hash:        "hash1",
-							LastUpdated: pastTime,
-						},
-					},
-				},
-				pushPullInterval: duration,
-			},
-			inputBuf: []byte(`["node-1", "hash1"]`),
-			expectedRetainHash: &retainedHash{
-				hashMap: map[string]retainedHashEntry{
-					"testDelegateMergeRemoteState": {
-						Hash:        "hash",
-						LastUpdated: pastTime,
-					},
-					"node-2": {
-						Hash:        "hash1",
-						LastUpdated: pastTime,
-					},
-					"node-3": {
-						Hash:        "hash1",
-						LastUpdated: pastTime,
-					},
-					"node-1": {
-						Hash:        "hash1",
-						LastUpdated: timeNow(),
-					},
-				},
-			},
-			expectedMessage:  []string{"node-1", "node-2"},
-			expectedLastSync: timeNow(),
+			expectedMessage:  []string{"node-1"},
 		},
 	}
 

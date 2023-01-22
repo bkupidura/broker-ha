@@ -3,7 +3,6 @@ package discovery
 import (
 	"encoding/json"
 	"log"
-	"sort"
 	"sync"
 	"time"
 
@@ -53,38 +52,17 @@ func (r *retainedHash) Get(node string) retainedHashEntry {
 	return r.hashMap[node]
 }
 
+// GetAll fetchs all nodes from hashMap.
+func (r *retainedHash) GetAll() map[string]retainedHashEntry {
+	return r.hashMap
+}
+
 // Delete removes node from hashMap.
 func (r *retainedHash) Delete(node string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	delete(r.hashMap, node)
-}
-
-// PopularHash will find most popular hash in the cluster.
-// Majority of nodes cant be wrong...
-func (r *retainedHash) PopularHash() (string, []string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	var mostPopularHash string
-	hashNodeMap := map[string][]string{}
-
-	nodes := make([]string, 0, len(r.hashMap))
-	for node := range r.hashMap {
-		nodes = append(nodes, node)
-	}
-	sort.Strings(nodes)
-
-	for _, node := range nodes {
-		hashEntry := r.Get(node)
-		hashNodeMap[hashEntry.Hash] = append(hashNodeMap[hashEntry.Hash], node)
-		if len(hashNodeMap[hashEntry.Hash]) > len(hashNodeMap[mostPopularHash]) {
-			mostPopularHash = hashEntry.Hash
-		}
-	}
-
-	return mostPopularHash, hashNodeMap[mostPopularHash]
 }
 
 // delegate implements memberlist.Delegate.
@@ -162,32 +140,25 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 
 	d.retainedHash.Set(state[0], state[1])
 
-	if join {
-		return
-	}
-
 	localHashEntry := d.retainedHash.Get(d.name)
 
-	if time.Since(d.lastSync) < d.pushPullInterval {
+	// If we synced retained messages in last run, skip current run.
+	if timeNow().Sub(d.lastSync) < d.pushPullInterval {
 		return
 	}
 
-	if time.Since(localHashEntry.LastUpdated) < d.pushPullInterval {
+	// If we recenty received retained message, skip current run
+	// unless we didnt run 4 syncs in a row.
+	if timeNow().Sub(localHashEntry.LastUpdated) < d.pushPullInterval/2 && timeNow().Sub(d.lastSync) < d.pushPullInterval*4 {
 		return
 	}
 
-	popularHash, nodes := d.retainedHash.PopularHash()
-
-	if localHashEntry.Hash != popularHash {
-		// If we have more than 2 nodes for sync, lets pick first two.
-		syncNodes := nodes
-		if len(syncNodes) > 2 {
-			syncNodes = nodes[:2]
-		}
-		log.Printf("quorum nodes %v syncing with %v", nodes, syncNodes)
-		d.lastSync = timeNow()
-		for _, node := range syncNodes {
+	for node, retainedHashEntry := range d.retainedHash.GetAll() {
+		if localHashEntry.Hash != retainedHashEntry.Hash {
+			log.Printf("fetching retained messages from %v", node)
+			d.lastSync = timeNow()
 			d.bus.Publish("discovery:request_retained", node)
+			return
 		}
 	}
 }
