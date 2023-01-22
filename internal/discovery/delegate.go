@@ -146,6 +146,8 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 
 	localHashEntry := d.retainedHash.Get(d.name)
 
+	log.Printf("d.pushPullInterval %v\nd.lastSync %v\nlocalHashEntry.LastUpdated %v\ntimeNow().Sub(d.lastSync) %v\ntimeNow().Sub(localHashEntry.LastUpdated) %v", d.pushPullInterval, d.lastSync, localHashEntry.LastUpdated, timeNow().Sub(d.lastSync), timeNow().Sub(localHashEntry.LastUpdated))
+
 	// If we synced retained messages in last run, skip current run.
 	if timeNow().Sub(d.lastSync) < d.pushPullInterval {
 		return

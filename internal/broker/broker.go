@@ -221,6 +221,7 @@ func (b *Broker) calculateRetainedHash() {
 		retainedMessages = append(retainedMessages, m)
 	}
 
+	log.Printf("calculateRetainedHash()")
 	if len(retainedMessages) < 1 {
 		return
 	}

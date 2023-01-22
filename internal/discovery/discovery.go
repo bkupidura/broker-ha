@@ -299,6 +299,7 @@ func (d *Discovery) eventLoop(ctx context.Context, chClusterMessageTo chan bus.E
 			}
 		case event := <-chDiscoveryRetainedHash:
 			retainedHash := event.Data.(string)
+			log.Printf("d.retainedHash.Set(d.config.Name, retainedHash) %v %v", d.config.Name, retainedHash)
 			d.retainedHash.Set(d.config.Name, retainedHash)
 		case <-ctx.Done():
 			log.Printf("stopping eventloop")

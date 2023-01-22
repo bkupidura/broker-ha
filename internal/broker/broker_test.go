@@ -806,6 +806,7 @@ func TestCalculateRetainedHash(t *testing.T) {
 				"auth for MQTT disabled",
 				"starting eventloop",
 				"unable to marshal message during retained hash calucation: mock error",
+				"calculateRetainedHash()",
 				"stopping eventloop",
 			},
 		},
@@ -816,6 +817,7 @@ func TestCalculateRetainedHash(t *testing.T) {
 				"auth for MQTT disabled",
 				"starting eventloop",
 				"stopping eventloop",
+				"calculateRetainedHash()",
 			},
 		},
 		{
@@ -838,6 +840,7 @@ func TestCalculateRetainedHash(t *testing.T) {
 				"auth for MQTT disabled",
 				"starting eventloop",
 				"stopping eventloop",
+				"calculateRetainedHash()",
 			},
 		},
 		{
@@ -893,6 +896,7 @@ func TestCalculateRetainedHash(t *testing.T) {
 				"auth for MQTT disabled",
 				"starting eventloop",
 				"stopping eventloop",
+				"calculateRetainedHash()",
 			},
 		},
 		{
@@ -948,6 +952,7 @@ func TestCalculateRetainedHash(t *testing.T) {
 				"auth for MQTT disabled",
 				"starting eventloop",
 				"stopping eventloop",
+				"calculateRetainedHash()",
 			},
 		},
 	}
