@@ -43,6 +43,10 @@ var (
 		Name: "broker_messages_sent",
 		Help: "Total number of sent messages",
 	})
+	messagesDropped = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "broker_messages_dropped",
+		Help: "Total number of publish messages dropped to slow subscriber",
+	})
 	inflight = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "broker_inflight_messages",
 		Help: "Number of in-flight messages",
@@ -59,6 +63,7 @@ func Initialize(opts *Options) {
 	prometheus.MustRegister(brokerUptime)
 	prometheus.MustRegister(messagesRecv)
 	prometheus.MustRegister(messagesSent)
+	prometheus.MustRegister(messagesDropped)
 	prometheus.MustRegister(inflight)
 
 	go collect(opts.Discovery, opts.Broker)
@@ -76,6 +81,7 @@ func collect(disco *discovery.Discovery, broker *broker.Broker) {
 		brokerUptime.Set(float64(broker.SystemInfo().Uptime))
 		messagesRecv.Set(float64(broker.SystemInfo().MessagesReceived))
 		messagesSent.Set(float64(broker.SystemInfo().MessagesSent))
+		messagesDropped.Set(float64(broker.SystemInfo().MessagesDropped))
 		inflight.Set(float64(broker.SystemInfo().Inflight))
 
 		time.Sleep(10 * time.Second)

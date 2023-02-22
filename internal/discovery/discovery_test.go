@@ -792,7 +792,7 @@ func TestEventLoop(t *testing.T) {
 	require.Nil(t, err)
 
 	evBus.Publish("cluster:message_to", types.DiscoveryPublishMessage{})
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 	expectedData := string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...))
 	require.Equal(t, expectedData, string(md.GetData()))
 
@@ -802,7 +802,7 @@ func TestEventLoop(t *testing.T) {
 	} {
 		evBus.Publish("cluster:message_to", message)
 	}
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 	expectedData = string(append([]byte{1}, []byte(`[{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0},{"Node":["all"],"Payload":null,"Topic":"","Retain":false,"Qos":0}]`)...))
 	require.Equal(t, expectedData, string(md.GetData()))
 }
