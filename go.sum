@@ -245,6 +245,8 @@ github.com/mochi-co/mqtt/v2 v2.1.6 h1:8QGRAE5QA+Z1UNcL0VJ6stx7Rwu/1O8sr/kn7tErVl
 github.com/mochi-co/mqtt/v2 v2.1.6/go.mod h1:djqXCOSOUcxr5bMPtdk9kDeSnbrXJ1DKHELZHc3/O0M=
 github.com/mochi-co/mqtt/v2 v2.2.2 h1:s1izxNecs0Zfmpo89g1EulKcIlxFzFbR6B2tgdVWVbg=
 github.com/mochi-co/mqtt/v2 v2.2.2/go.mod h1:KzMgWoPd31AtOSAsQKBjEWY0klMKmNlX1dO+bv+DeAo=
+github.com/mochi-co/mqtt/v2 v2.2.3 h1:EKpQmfTcvCtAY9YwaEU54nf5OKG1rH2hlqOXQE9mhus=
+github.com/mochi-co/mqtt/v2 v2.2.3/go.mod h1:KzMgWoPd31AtOSAsQKBjEWY0klMKmNlX1dO+bv+DeAo=
 github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd h1:TRLaZ9cD/w8PVh93nsPXa1VrQ6jlwL5oN8l14QlcNfg=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=

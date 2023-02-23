@@ -9,7 +9,7 @@ require (
 	github.com/go-chi/render v1.0.2
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/memberlist v0.5.0
-	github.com/mochi-co/mqtt/v2 v2.2.2
+	github.com/mochi-co/mqtt/v2 v2.2.3
 	github.com/prometheus/client_golang v1.14.0
 	github.com/rs/zerolog v1.29.0
 	github.com/spf13/viper v1.15.0
