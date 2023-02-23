@@ -247,7 +247,7 @@ List of channels:
 
 ## HTTP
 
-By default `/api` prefixed endpoints are available without authentication.
+By default `/api` and `/debug` prefixed endpoints are available without authentication.
 If you need authentication for those endpoints, add to `config.yaml` `api.user` key to enable HTTP basic auth.
 
 ```
@@ -318,6 +318,15 @@ Response:
 Response code:
 - 200 when health
 - 503 when not healthy
+
+### :8080/debug endpoint
+
+Expose [net/http/pprof](https://pkg.go.dev/net/http/pprof) endpoint.
+
+cURL:
+```
+curl localhost:8080/debug
+```
 
 ### :8080/api/sse endpoint
 

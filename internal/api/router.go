@@ -28,6 +28,8 @@ func NewRouter(opts *Options) *chi.Mux {
 		}
 		r.Use(middleware.Recoverer)
 
+		r.Mount("/debug", middleware.Profiler())
+
 		r.Get("/proxy/api/discovery/members", proxyHandler(opts.Discovery))
 		r.Get("/proxy/api/mqtt/clients", proxyHandler(opts.Discovery))
 		r.Post("/proxy/api/mqtt/client/inflight", proxyHandler(opts.Discovery))
