@@ -88,8 +88,6 @@ func (b *Bus) Unsubscribe(channelName, subName string) {
 	if len(channel.subscribers) == 0 {
 		delete(b.channels, channelName)
 	}
-
-	return
 }
 
 // Publish data to channel.

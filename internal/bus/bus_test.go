@@ -35,7 +35,7 @@ func TestAddSubscriber(t *testing.T) {
 		{
 			inputEventChannel: &eventChannel{
 				subscribers: map[string]chan Event{
-					"existing": make(chan Event, 0),
+					"existing": make(chan Event),
 				},
 			},
 			inputSubscriptionName:    "test",
@@ -46,7 +46,7 @@ func TestAddSubscriber(t *testing.T) {
 		{
 			inputEventChannel: &eventChannel{
 				subscribers: map[string]chan Event{
-					"existing": make(chan Event, 0),
+					"existing": make(chan Event),
 				},
 			},
 			inputSubscriptionName:    "test",
@@ -57,7 +57,7 @@ func TestAddSubscriber(t *testing.T) {
 		{
 			inputEventChannel: &eventChannel{
 				subscribers: map[string]chan Event{
-					"test": make(chan Event, 0),
+					"test": make(chan Event),
 				},
 			},
 			inputSubscriptionName:    "test",
@@ -93,7 +93,7 @@ func TestDelSubscriber(t *testing.T) {
 		{
 			inputEventChannel: &eventChannel{
 				subscribers: map[string]chan Event{
-					"existing": make(chan Event, 0),
+					"existing": make(chan Event),
 				},
 			},
 			inputSubscriptionName: "test",
@@ -102,7 +102,7 @@ func TestDelSubscriber(t *testing.T) {
 		{
 			inputEventChannel: &eventChannel{
 				subscribers: map[string]chan Event{
-					"test": make(chan Event, 0),
+					"test": make(chan Event),
 				},
 			},
 			inputSubscriptionName: "test",
@@ -176,7 +176,7 @@ func TestSubscribe(t *testing.T) {
 				channels: map[string]*eventChannel{
 					"test": {
 						subscribers: map[string]chan Event{
-							"test": make(chan Event, 0),
+							"test": make(chan Event),
 						},
 					},
 				},
@@ -245,7 +245,7 @@ func TestUnsubscribe(t *testing.T) {
 				channels: map[string]*eventChannel{
 					"test": {
 						subscribers: map[string]chan Event{
-							"test": make(chan Event, 0),
+							"test": make(chan Event),
 						},
 					},
 				},
@@ -260,8 +260,8 @@ func TestUnsubscribe(t *testing.T) {
 				channels: map[string]*eventChannel{
 					"test": {
 						subscribers: map[string]chan Event{
-							"existing": make(chan Event, 0),
-							"test":     make(chan Event, 0),
+							"existing": make(chan Event),
+							"test":     make(chan Event),
 						},
 					},
 				},
@@ -440,14 +440,12 @@ func TestPublish(t *testing.T) {
 					var wg sync.WaitGroup
 					wg.Add(3)
 					w := func(r map[string]int, n string) {
-						select {
-						case e := <-ch:
-							require.Equal(t, "test", e.ChannelName)
-							mu.Lock()
-							defer mu.Unlock()
-							r[n]++
-							wg.Done()
-						}
+						e := <-ch
+						require.Equal(t, "test", e.ChannelName)
+						mu.Lock()
+						defer mu.Unlock()
+						r[n]++
+						wg.Done()
 					}
 					go w(r, "s1")
 					go w(r, "s2")

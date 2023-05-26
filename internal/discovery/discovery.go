@@ -177,13 +177,11 @@ func (d *Discovery) FormCluster(minInitSleep, maxInitSleep int) error {
 		initialMemberIPs, _ = getInitialMemberIPs(d.domain)
 	}
 
-	if initialMemberIPs != nil {
-		for _, ipPortPair := range initialMemberIPs {
-			if _, ok := d.selfAddress[ipPortPair]; ok {
-				continue
-			}
-			members = append(members, ipPortPair)
+	for _, ipPortPair := range initialMemberIPs {
+		if _, ok := d.selfAddress[ipPortPair]; ok {
+			continue
 		}
+		members = append(members, ipPortPair)
 	}
 
 	sort.Strings(members)
