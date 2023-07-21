@@ -691,7 +691,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 					ProtocolVersion: 4,
 					PacketID:        1,
 					FixedHeader: packets.FixedHeader{
-						Retain: true,
+						Retain: false,
 						Qos:    2,
 						Type:   3,
 					},

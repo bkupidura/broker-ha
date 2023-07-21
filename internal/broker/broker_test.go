@@ -509,7 +509,7 @@ func TestInflights(t *testing.T) {
 					FixedHeader: packets.FixedHeader{
 						Type:   3,
 						Qos:    2,
-						Retain: true,
+						Retain: false,
 					},
 					PacketID:        1,
 					ProtocolVersion: 4,
@@ -626,7 +626,7 @@ func TestSubscribers(t *testing.T) {
 	}
 }
 
-func TestPublishToMQTT(t *testing.T) {
+func TestPublishToMQTTWithSub(t *testing.T) {
 	tests := []struct {
 		inputMessage     types.MQTTPublishMessage
 		expectedPayload  []byte
@@ -646,28 +646,28 @@ func TestPublishToMQTT(t *testing.T) {
 			inputMessage:     types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test"), Retain: true, Qos: 2},
 			expectedPayload:  []byte("test"),
 			expectedTopic:    "topic",
-			expectedQos:      2,
-			expectedRetained: true,
-		},
-		{
-			inputMessage:     types.MQTTPublishMessage{Topic: "topic2", Payload: []byte("test2"), Retain: true, Qos: 1},
-			expectedPayload:  []byte("test2"),
-			expectedTopic:    "topic2",
-			expectedQos:      1,
-			expectedRetained: true,
-		},
-		{
-			inputMessage:     types.MQTTPublishMessage{Topic: "topic3", Payload: []byte("test3"), Retain: true, Qos: 0},
-			expectedPayload:  []byte("test3"),
-			expectedTopic:    "topic3",
 			expectedQos:      0,
-			expectedRetained: true,
+			expectedRetained: false,
 		},
 		{
-			inputMessage:     types.MQTTPublishMessage{Topic: "topic4", Payload: []byte("test4"), Retain: false, Qos: 2},
+			inputMessage:     types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test2"), Retain: true, Qos: 1},
+			expectedPayload:  []byte("test2"),
+			expectedTopic:    "topic",
+			expectedQos:      0,
+			expectedRetained: false,
+		},
+		{
+			inputMessage:     types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test3"), Retain: true, Qos: 0},
+			expectedPayload:  []byte("test3"),
+			expectedTopic:    "topic",
+			expectedQos:      0,
+			expectedRetained: false,
+		},
+		{
+			inputMessage:     types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test4"), Retain: false, Qos: 2},
 			expectedPayload:  []byte("test4"),
-			expectedTopic:    "topic4",
-			expectedQos:      2,
+			expectedTopic:    "topic",
+			expectedQos:      0,
 			expectedRetained: false,
 		},
 	}
@@ -771,6 +771,89 @@ func TestSendRetained(t *testing.T) {
 		require.Equal(t, test.expectedMessage, e.Data.(types.DiscoveryPublishMessage))
 
 		time.Sleep(1 * time.Millisecond)
+	}
+}
+
+func TestPublishToMQTTWithoutSub(t *testing.T) {
+	tests := []struct {
+		inputMessage     types.MQTTPublishMessage
+		expectedPayload  []byte
+		expectedQos      byte
+		expectedTopic    string
+		expectedRetained bool
+	}{
+		{
+			inputMessage:     types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test"), Retain: true, Qos: 2},
+			expectedPayload:  []byte("test"),
+			expectedTopic:    "topic",
+			expectedQos:      0,
+			expectedRetained: true,
+		},
+		{
+			inputMessage:     types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test2"), Retain: true, Qos: 1},
+			expectedPayload:  []byte("test2"),
+			expectedTopic:    "topic",
+			expectedQos:      0,
+			expectedRetained: true,
+		},
+		{
+			inputMessage:     types.MQTTPublishMessage{Topic: "topic", Payload: []byte("test3"), Retain: true, Qos: 0},
+			expectedPayload:  []byte("test3"),
+			expectedTopic:    "topic",
+			expectedQos:      0,
+			expectedRetained: true,
+		},
+	}
+
+	evBus := bus.New()
+	broker, ctxCancel, err := New(&Options{
+		MQTTPort:         1883,
+		Bus:              evBus,
+		SubscriptionSize: map[string]int{"cluster:message_from": 1024, "cluster:new_member": 10},
+	})
+
+	require.Nil(t, err)
+
+	defer ctxCancel()
+	defer broker.Shutdown()
+
+	mqttConnOpts := paho.NewClientOptions().
+		AddBroker("127.0.0.1:1883")
+
+	for _, test := range tests {
+		broker.publishToMQTT(test.inputMessage)
+
+		time.Sleep(5 * time.Millisecond)
+
+		mqttReceiveQueue := make(chan paho.Message, 5)
+		mqttOnMessage := func(client paho.Client, message paho.Message) {
+			mqttReceiveQueue <- message
+		}
+
+		mqttClient := paho.NewClient(mqttConnOpts)
+		if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
+			t.Fatalf("paho.NewClient error: %s", token.Error())
+		}
+		defer mqttClient.Disconnect(10)
+
+		if token := mqttClient.Subscribe("#", byte(0), mqttOnMessage); token.Wait() && token.Error() != nil {
+			t.Fatalf("mqttClient.Subscribe error: %s", token.Error())
+		}
+
+		time.Sleep(10 * time.Millisecond)
+
+		if test.expectedPayload != nil {
+			mqttMessage := <-mqttReceiveQueue
+			require.Equal(t, test.expectedTopic, mqttMessage.Topic())
+			require.Equal(t, test.expectedPayload, mqttMessage.Payload())
+			require.Equal(t, test.expectedQos, mqttMessage.Qos())
+			require.Equal(t, test.expectedRetained, mqttMessage.Retained())
+		}
+
+		mqttClient.Disconnect(5)
+
+		time.Sleep(20 * time.Millisecond)
+
 	}
 }
 

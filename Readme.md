@@ -26,6 +26,7 @@ DNS SRV discovery is only used to discover initial (after startup) cluster membe
 ## Limitations
 
 - Member auto-discovery requires DNS SRV (e.g K8s headless service)
+- [Shared subscriptions not supported](https://github.com/bkupidura/broker-ha/issues/9)
 
 
 ## Configuration
