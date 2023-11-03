@@ -3,7 +3,7 @@ package broker
 import (
 	"brokerha/internal/bus"
 
-	"github.com/mochi-co/mqtt/v2/hooks/auth"
+	"github.com/mochi-mqtt/server/v2/hooks/auth"
 )
 
 // Options contains configurable options for the broker.

@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/mochi-co/mqtt/v2"
-	"github.com/mochi-co/mqtt/v2/hooks/auth"
-	"github.com/mochi-co/mqtt/v2/listeners"
-	"github.com/mochi-co/mqtt/v2/packets"
-	"github.com/mochi-co/mqtt/v2/system"
-	"github.com/rs/zerolog"
+	"github.com/mochi-mqtt/server/v2"
+	"github.com/mochi-mqtt/server/v2/hooks/auth"
+	"github.com/mochi-mqtt/server/v2/listeners"
+	"github.com/mochi-mqtt/server/v2/packets"
+	"github.com/mochi-mqtt/server/v2/system"
 
 	"brokerha/internal/bus"
 	"brokerha/internal/types"
@@ -57,9 +56,8 @@ func New(opts *Options) (*Broker, context.CancelFunc, error) {
 
 	mqttServer := mqtt.New(&mqtt.Options{
 		Capabilities: mqttDefaultCapabilities,
+		InlineClient: true,
 	})
-	l := mqttServer.Log.Level(zerolog.Disabled)
-	mqttServer.Log = &l
 
 	if len(opts.Auth) > 0 {
 		if err := mqttServer.AddHook(new(auth.Hook), &auth.Options{

@@ -16,8 +16,8 @@ import (
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/hashicorp/memberlist"
-	"github.com/mochi-co/mqtt/v2"
-	"github.com/mochi-co/mqtt/v2/packets"
+	"github.com/mochi-mqtt/server/v2"
+	"github.com/mochi-mqtt/server/v2/packets"
 	"github.com/stretchr/testify/require"
 
 	"brokerha/internal/broker"
@@ -569,10 +569,10 @@ func TestMqttClientsHandler(t *testing.T) {
 	unmarshalBody(res.Body, &clients)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, 1, len(clients))
+	require.Equal(t, 2, len(clients))
 	for _, client := range clients {
 		require.NotNil(t, client)
-		require.Equal(t, "TestMqttClientsHandler", client.ID)
+		require.Subset(t, []string{"TestMqttClientsHandler", "inline"}, []string{client.ID})
 	}
 }
 
@@ -890,9 +890,10 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 			inputRequest: map[string]interface{}{"topic": "missing"},
 			expectedCode: http.StatusOK,
 			expectedSubscribers: &mqtt.Subscribers{
-				Shared:         make(map[string]map[string]packets.Subscription),
-				SharedSelected: make(map[string]packets.Subscription),
-				Subscriptions:  make(map[string]packets.Subscription),
+				Shared:              make(map[string]map[string]packets.Subscription),
+				SharedSelected:      make(map[string]packets.Subscription),
+				Subscriptions:       make(map[string]packets.Subscription),
+				InlineSubscriptions: make(map[int]mqtt.InlineSubscription),
 			},
 		},
 		{
@@ -910,6 +911,7 @@ func TestMqttTopicSubscribersHandler(t *testing.T) {
 						Qos: 2,
 					},
 				},
+				InlineSubscriptions: make(map[int]mqtt.InlineSubscription),
 			},
 		},
 	}

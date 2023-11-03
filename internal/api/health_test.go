@@ -109,9 +109,9 @@ func TestHealthzHandler(t *testing.T) {
 	healthResult := getHealthResult(res.Body)
 
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
-	require.Equal(t, health.StatusDown, (*healthResult.Details)["liveness_cluster_discovered_members"].Status)
-	require.Equal(t, health.StatusUp, (*healthResult.Details)["liveness_cluster_health"].Status)
-	require.Equal(t, health.StatusUp, (*healthResult.Details)["liveness_member_in_cluster"].Status)
+	require.Equal(t, health.StatusDown, healthResult.Details["liveness_cluster_discovered_members"].Status)
+	require.Equal(t, health.StatusUp, healthResult.Details["liveness_cluster_health"].Status)
+	require.Equal(t, health.StatusUp, healthResult.Details["liveness_member_in_cluster"].Status)
 
 	_, err = disco.Join([]string{"127.0.0.1:7947"})
 	if err != nil {
@@ -134,9 +134,9 @@ func TestHealthzHandler(t *testing.T) {
 	healthResult = getHealthResult(res.Body)
 
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
-	require.Equal(t, health.StatusDown, (*healthResult.Details)["liveness_cluster_health"].Status)
-	require.Equal(t, health.StatusUp, (*healthResult.Details)["liveness_cluster_discovered_members"].Status)
-	require.Equal(t, health.StatusUp, (*healthResult.Details)["liveness_member_in_cluster"].Status)
+	require.Equal(t, health.StatusDown, healthResult.Details["liveness_cluster_health"].Status)
+	require.Equal(t, health.StatusUp, healthResult.Details["liveness_cluster_discovered_members"].Status)
+	require.Equal(t, health.StatusUp, healthResult.Details["liveness_member_in_cluster"].Status)
 
 	disco.Leave(100)
 	time.Sleep(1 * time.Second)
@@ -148,7 +148,7 @@ func TestHealthzHandler(t *testing.T) {
 	healthResult = getHealthResult(res.Body)
 
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
-	require.Equal(t, health.StatusDown, (*healthResult.Details)["liveness_member_in_cluster"].Status)
+	require.Equal(t, health.StatusDown, healthResult.Details["liveness_member_in_cluster"].Status)
 }
 
 func getHealthResult(body io.Reader) *health.CheckerResult {

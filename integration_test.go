@@ -163,12 +163,12 @@ func TestBrokerHA(t *testing.T) {
 		}
 
 		if endpoint == "ready" {
-			for checkName, check := range *healthResult.Details {
+			for checkName, check := range healthResult.Details {
 				require.Equal(t, health.StatusDown, check.Status, fmt.Sprintf("unexpected status for %s", checkName))
 			}
 		} else {
 			for _, shouldFailCheckName := range []string{"liveness_cluster_health", "liveness_cluster_discovered_members"} {
-				require.Equal(t, health.StatusDown, (*healthResult.Details)[shouldFailCheckName].Status)
+				require.Equal(t, health.StatusDown, healthResult.Details[shouldFailCheckName].Status)
 			}
 		}
 	}

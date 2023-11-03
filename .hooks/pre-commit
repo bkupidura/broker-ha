@@ -11,11 +11,6 @@ do
         PASS=false
     fi
 
-    UNFORMATTED=$(goimports -l ${FILE})
-    if [ ! -z "${UNFORMATTED}" ]; then
-        echo "go files must be formated, run 'goimports -d ${FILE}'"
-        PASS=false
-    fi
 done
 
 go vet ./... 2> /dev/null

@@ -13,7 +13,7 @@ import (
 	"brokerha/internal/discovery"
 	"brokerha/internal/metric"
 
-	"github.com/mochi-co/mqtt/v2/hooks/auth"
+	"github.com/mochi-mqtt/server/v2/hooks/auth"
 )
 
 var (

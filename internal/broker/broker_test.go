@@ -9,9 +9,9 @@ import (
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
-	"github.com/mochi-co/mqtt/v2"
-	"github.com/mochi-co/mqtt/v2/hooks/auth"
-	"github.com/mochi-co/mqtt/v2/packets"
+	"github.com/mochi-mqtt/server/v2"
+	"github.com/mochi-mqtt/server/v2/hooks/auth"
+	"github.com/mochi-mqtt/server/v2/packets"
 	"github.com/stretchr/testify/require"
 
 	"brokerha/internal/bus"
@@ -371,6 +371,12 @@ func TestClients(t *testing.T) {
 
 	require.Equal(t, []*MQTTClient{
 		{
+			ID:              "inline",
+			CleanSession:    false,
+			Subscriptions:   map[string]packets.Subscription{},
+			ProtocolVersion: 4,
+		},
+		{
 			ID:              "TestClients",
 			CleanSession:    true,
 			Subscriptions:   map[string]packets.Subscription{},
@@ -438,6 +444,12 @@ func TestStopClient(t *testing.T) {
 			expectedErr:   errors.New("unknown client"),
 			expectedClients: []*MQTTClient{
 				{
+					ID:              "inline",
+					CleanSession:    false,
+					Subscriptions:   map[string]packets.Subscription{},
+					ProtocolVersion: 4,
+				},
+				{
 					ID:              "TestStopClient",
 					CleanSession:    true,
 					Subscriptions:   map[string]packets.Subscription{},
@@ -448,6 +460,12 @@ func TestStopClient(t *testing.T) {
 		{
 			inputClientID: "TestStopClient",
 			expectedClients: []*MQTTClient{
+				{
+					ID:              "inline",
+					CleanSession:    false,
+					Subscriptions:   map[string]packets.Subscription{},
+					ProtocolVersion: 4,
+				},
 				{
 					ID:              "TestStopClient",
 					CleanSession:    true,
@@ -482,7 +500,7 @@ func TestStopClient(t *testing.T) {
 		err := broker.StopClient(test.inputClientID, "test")
 		require.Equal(t, test.expectedErr, err)
 		clients := broker.Clients()
-		require.Equal(t, test.expectedClients, clients)
+		require.ElementsMatch(t, test.expectedClients, clients)
 	}
 }
 
@@ -575,9 +593,10 @@ func TestSubscribers(t *testing.T) {
 		{
 			inputFilter: "missing",
 			expectedSubscribers: &mqtt.Subscribers{
-				Shared:         make(map[string]map[string]packets.Subscription),
-				SharedSelected: make(map[string]packets.Subscription),
-				Subscriptions:  make(map[string]packets.Subscription),
+				Shared:              make(map[string]map[string]packets.Subscription),
+				SharedSelected:      make(map[string]packets.Subscription),
+				Subscriptions:       make(map[string]packets.Subscription),
+				InlineSubscriptions: make(map[int]mqtt.InlineSubscription),
 			},
 		},
 		{
@@ -592,6 +611,7 @@ func TestSubscribers(t *testing.T) {
 						Identifiers: map[string]int{"TestSubscribers": 0},
 					},
 				},
+				InlineSubscriptions: make(map[int]mqtt.InlineSubscription),
 			},
 		},
 	}
