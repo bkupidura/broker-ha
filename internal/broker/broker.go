@@ -52,7 +52,7 @@ func New(opts *Options) (*Broker, context.CancelFunc, error) {
 
 	mqttDefaultCapabilities := mqtt.DefaultServerCapabilities
 	// We wants very long expiry time not to lose any retained messages.
-	mqttDefaultCapabilities.MaximumMessageExpiryInterval = 60 * 60 * 24 * 30 * 12
+	mqttDefaultCapabilities.MaximumMessageExpiryInterval = 0
 
 	mqttServer := mqtt.New(&mqtt.Options{
 		Capabilities: mqttDefaultCapabilities,

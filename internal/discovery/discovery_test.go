@@ -604,7 +604,7 @@ func TestPublishToCluster(t *testing.T) {
 			jsonMarshal:  json.Marshal,
 			queueDataTypesFunc: func() {
 				queueDataTypes = map[string]byte{}
-				time.Sleep(5 * time.Millisecond)
+				time.Sleep(15 * time.Millisecond)
 				queueDataTypes = map[string]byte{"MQTTPublish": 1}
 			},
 		},
@@ -734,6 +734,7 @@ func TestPublishToCluster(t *testing.T) {
 
 		jsonMarshal = test.jsonMarshal
 		go test.queueDataTypesFunc()
+		time.Sleep(10 * time.Millisecond)
 
 		mqttPublishBatch := map[string][]types.DiscoveryPublishMessage{}
 		for _, m := range test.inputMessage {

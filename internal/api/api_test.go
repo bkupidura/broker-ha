@@ -757,7 +757,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 
 		for idx, pk := range test.expectedMessages {
 			pk.Created = now
-			pk.Expiry = now + 60*60*24*30*12
+			pk.Expiry = now
 			test.expectedMessages[idx] = pk
 		}
 

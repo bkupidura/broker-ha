@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 GO_FILES=$(find . -type f -iname '*.go')
 PASS=true
 
