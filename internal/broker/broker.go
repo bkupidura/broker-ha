@@ -78,7 +78,7 @@ func New(opts *Options) (*Broker, context.CancelFunc, error) {
 		return nil, nil, err
 	}
 
-	listener := listeners.NewTCP("tcp", fmt.Sprintf(":%d", opts.MQTTPort), nil)
+	listener := listeners.NewTCP(listeners.Config{ID: "tcp", Address: fmt.Sprintf(":%d", opts.MQTTPort)})
 
 	if err := mqttServer.AddListener(listener); err != nil {
 		return nil, nil, err
