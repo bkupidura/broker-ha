@@ -698,6 +698,7 @@ func TestMqttClientInflightHandler(t *testing.T) {
 					Properties: packets.Properties{
 						SubscriptionIdentifier: []int{0},
 					},
+					Expiry: 0,
 				},
 			},
 		},
@@ -757,7 +758,6 @@ func TestMqttClientInflightHandler(t *testing.T) {
 
 		for idx, pk := range test.expectedMessages {
 			pk.Created = now
-			pk.Expiry = now
 			test.expectedMessages[idx] = pk
 		}
 

@@ -531,6 +531,7 @@ func TestInflights(t *testing.T) {
 					},
 					PacketID:        1,
 					ProtocolVersion: 4,
+					Expiry:          0,
 				},
 			},
 		},
@@ -577,7 +578,6 @@ func TestInflights(t *testing.T) {
 		require.Equal(t, test.expectedErr, err)
 		for idx, pk := range test.expectedInflights {
 			pk.Created = now
-			pk.Expiry = now + broker.server.Options.Capabilities.MaximumMessageExpiryInterval
 			test.expectedInflights[idx] = pk
 		}
 
