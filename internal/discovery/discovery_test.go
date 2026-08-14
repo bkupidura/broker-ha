@@ -216,7 +216,7 @@ func TestJoin(t *testing.T) {
 	defer ml.Shutdown()
 
 	joinedMembers, err := disco.Join([]string{"127.0.0.1:7948"})
-	require.Equal(t, "1 error occurred:\n\t* Failed to join 127.0.0.1:7948: dial tcp 127.0.0.1:7948: connect: connection refused\n\n", err.Error())
+	require.Equal(t, "1 error occurred:\n\t* failed to join 127.0.0.1:7948: dial tcp 127.0.0.1:7948: connect: connection refused\n\n", err.Error())
 	require.Equal(t, 0, joinedMembers)
 
 	joinedMembers, err = disco.Join([]string{"127.0.0.1:7947"})
@@ -401,7 +401,7 @@ func TestFormCluster(t *testing.T) {
 				return a, nil
 			},
 			expectedLog: "joining existing cluster with [2.2.2.2:7947]\n",
-			expectedErr: multierror.Append(errs, errors.New("Failed to join 2.2.2.2:7947: dial tcp 2.2.2.2:7947: i/o timeout")),
+			expectedErr: multierror.Append(errs, errors.New("failed to join 2.2.2.2:7947: dial tcp 2.2.2.2:7947: i/o timeout")),
 			inputMemberlistConfig: func() *memberlist.Config {
 				mlConfig := memberlist.DefaultLocalConfig()
 				mlConfig.BindAddr = "127.0.0.1"
